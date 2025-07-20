@@ -43,9 +43,12 @@ RUN apt-get install -y \
 
 # Instala COLMAP desde código fuente
 RUN git clone --recursive https://github.com/colmap/colmap.git /colmap && \
+    cd /colmap && \
+    git checkout tags/3.12.3 -b v3.12.3 && \
     mkdir /colmap/build && cd /colmap/build && \
     cmake .. -GNinja -DCMAKE_CUDA_ARCHITECTURES=86 && \
-    ninja && ninja install
+    ninja && \
+    ninja install
 
 # Añade colmap2nerf.py automáticamente
 RUN mkdir -p /colmap/scripts/python && \
