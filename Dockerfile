@@ -1,0 +1,57 @@
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+
+# Usa GCC 10 compatible con CUDA 11.8
+RUN apt-get update && apt-get install -y \
+    software-properties-common && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    apt-get update && apt-get install -y \
+    gcc-10 g++-10
+
+ENV CC=/usr/bin/gcc-10
+ENV CXX=/usr/bin/g++-10
+ENV CUDAHOSTCXX=/usr/bin/g++-10
+
+# Instala dependencias para COLMAP
+RUN apt-get install -y \
+    git \
+    cmake \
+    ninja-build \
+    build-essential \
+    libboost-program-options-dev \
+    libboost-graph-dev \
+    libboost-system-dev \
+    libeigen3-dev \
+    libfreeimage-dev \
+    libmetis-dev \
+    libgoogle-glog-dev \
+    libgtest-dev \
+    libgmock-dev \
+    libsqlite3-dev \
+    libglew-dev \
+    qtbase5-dev \
+    libqt5opengl5-dev \
+    libcgal-dev \
+    libceres-dev \
+    libcurl4-openssl-dev \
+    libopenblas-dev \
+    libcgal-qt5-dev \
+    python3-pip \
+    ssh \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala COLMAP desde código fuente
+RUN git clone --recursive https://github.com/colmap/colmap.git /colmap && \
+    mkdir /colmap/build && cd /colmap/build && \
+    cmake .. -GNinja -DCMAKE_CUDA_ARCHITECTURES=86 && \
+    ninja && ninja install
+
+# Instala dependencias Python
+RUN pip3 install numpy
+
+# Prepara el entorno de trabajo
+WORKDIR /app
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]
