@@ -38,6 +38,7 @@ RUN apt-get install -y \
     python3-pip \
     ssh \
     wget \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Instala COLMAP desde código fuente
@@ -46,8 +47,12 @@ RUN git clone --recursive https://github.com/colmap/colmap.git /colmap && \
     cmake .. -GNinja -DCMAKE_CUDA_ARCHITECTURES=86 && \
     ninja && ninja install
 
+# Añade colmap2nerf.py automáticamente
+RUN mkdir -p /colmap/scripts/python && \
+    wget -O /colmap/scripts/python/colmap2nerf.py https://raw.githubusercontent.com/NVlabs/instant-ngp/refs/heads/master/scripts/colmap2nerf.py
+
 # Instala dependencias Python
-RUN pip3 install numpy
+RUN pip3 install numpy opencv-python
 
 # Prepara el entorno de trabajo
 WORKDIR /app

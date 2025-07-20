@@ -1,7 +1,7 @@
 #!/bin/bash
-set -euo pipefail  # Más estricto: -e (errores), -u (vars indefinidas), -o pipefail (errores en pipes)
+set -euo pipefail 
 
-# Validar variables requeridas
+
 : "${DATA_PATH:?Variable DATA_PATH no definida}"
 : "${DATASET_NAME:?Variable DATASET_NAME no definida}"
 : "${GH_KEY:?Variable GH_KEY no definida}"
@@ -35,33 +35,31 @@ if ! colmap automatic_reconstructor \
     exit 1
 fi
 
-echo "==> Generando transforms.json para Instant-NGP..."
+echo "==> Generando transforms.json para Instant-NGP en formato OpenCV..."
 if ! python3 /colmap/scripts/python/colmap2nerf.py \
     --colmap_path "$DATA_PATH/colmap" \
-    --images "$DATA_PATH/images"; then
+    --images "$DATA_PATH/images" \
+    --out "$DATA_PATH/transforms.json" \
+    --model OPENCV \
+    --aabb_scale 2; then
     echo "Error: Falló la generación de transforms.json"
     exit 1
 fi
 
-# Verificar que se generó el archivo
-if [ ! -f "$DATA_PATH/images/transforms.json" ]; then
+
+if [ ! -f "$DATA_PATH/transforms.json" ]; then
     echo "Error: No se encontró transforms.json después de la conversión"
     exit 1
 fi
 
-echo "==> Moviendo transforms.json a nivel superior..."
-if ! mv "$DATA_PATH/images/transforms.json" "$DATA_PATH/transforms.json"; then
-    echo "Error: No se pudo mover transforms.json"
-    exit 1
-fi
 
-# Verificar estructura final
 if [ ! -d "$DATA_PATH/images" ] || [ ! -f "$DATA_PATH/transforms.json" ]; then
     echo "Error: Estructura final del dataset incompleta"
     exit 1
 fi
 
-echo "✅ Dataset preparado exitosamente en $DATA_PATH"
+echo "Dataset preparado exitosamente en $DATA_PATH"
 echo "  - Imágenes: $(ls "$DATA_PATH/images" | wc -l) archivos"
 echo "  - Reconstrucción COLMAP: completada"
 echo "  - transforms.json: generado"
+echo "==> Listo para entrenamiento con Instant-NGP"
