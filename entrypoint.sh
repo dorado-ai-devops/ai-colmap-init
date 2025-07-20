@@ -1,5 +1,10 @@
 #!/bin/bash
-set -e
+set -euo pipefail  # Más estricto: -e (errores), -u (vars indefinidas), -o pipefail (errores en pipes)
+
+# Validar variables requeridas
+: "${DATA_PATH:?Variable DATA_PATH no definida}"
+: "${DATASET_NAME:?Variable DATASET_NAME no definida}"
+: "${GH_KEY:?Variable GH_KEY no definida}"
 
 echo "==> Limpieza previa de datos temporales y anteriores"
 rm -rf /tmp/tmp_cloned
@@ -22,17 +27,41 @@ cp -r /tmp/tmp_cloned/${DATASET_NAME}/* "$DATA_PATH/images"
 
 mkdir -p "${DATA_PATH:?}/colmap"
 echo "==> Ejecutando COLMAP..."
-colmap automatic_reconstructor \
+if ! colmap automatic_reconstructor \
     --image_path "$DATA_PATH/images" \
     --workspace_path "$DATA_PATH/colmap" \
-    --use_gpu 1
+    --use_gpu 1; then
+    echo "Error: Falló la reconstrucción COLMAP"
+    exit 1
+fi
 
 echo "==> Generando transforms.json para Instant-NGP..."
-python3 /colmap/scripts/python/colmap2nerf.py \
+if ! python3 /colmap/scripts/python/colmap2nerf.py \
     --colmap_path "$DATA_PATH/colmap" \
-    --images "$DATA_PATH/images"
+    --images "$DATA_PATH/images"; then
+    echo "Error: Falló la generación de transforms.json"
+    exit 1
+fi
+
+# Verificar que se generó el archivo
+if [ ! -f "$DATA_PATH/images/transforms.json" ]; then
+    echo "Error: No se encontró transforms.json después de la conversión"
+    exit 1
+fi
 
 echo "==> Moviendo transforms.json a nivel superior..."
-mv "$DATA_PATH/images/transforms.json" "$DATA_PATH/transforms.json"
+if ! mv "$DATA_PATH/images/transforms.json" "$DATA_PATH/transforms.json"; then
+    echo "Error: No se pudo mover transforms.json"
+    exit 1
+fi
 
-echo "Dataset preparado en $DATA_PATH"
+# Verificar estructura final
+if [ ! -d "$DATA_PATH/images" ] || [ ! -f "$DATA_PATH/transforms.json" ]; then
+    echo "Error: Estructura final del dataset incompleta"
+    exit 1
+fi
+
+echo "✅ Dataset preparado exitosamente en $DATA_PATH"
+echo "  - Imágenes: $(ls "$DATA_PATH/images" | wc -l) archivos"
+echo "  - Reconstrucción COLMAP: completada"
+echo "  - transforms.json: generado"
