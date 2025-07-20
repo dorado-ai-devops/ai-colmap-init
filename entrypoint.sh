@@ -25,7 +25,6 @@ git clone git@github.com:dorado-ai-devops/ai-nerf-datasets.git /tmp/tmp_cloned
 
 echo "==> Copiando imágenes al directorio de entrenamiento: $DATA_PATH"
 mkdir -p "$DATA_PATH/images"
-cp -r /tmp/tmp_cloned/${DATASET_NAME}/* "$DATA_PATH/images"
 
 if [ "$IMG_TOTAL_SIZE" == "TOTAL" ]; then
     # Si IMG_TOTAL_SIZE es TOTAL, copiar todas las imágenes
