@@ -1,6 +1,6 @@
 FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
-# Usa GCC 10 compatible con CUDA 11.8
+
 RUN apt-get update && apt-get install -y \
     software-properties-common && \
     add-apt-repository ppa:ubuntu-toolchain-r/test && \
@@ -11,7 +11,7 @@ ENV CC=/usr/bin/gcc-10
 ENV CXX=/usr/bin/g++-10
 ENV CUDAHOSTCXX=/usr/bin/g++-10
 
-# Instala dependencias para COLMAP
+
 RUN apt-get install -y \
     git \
     cmake \
@@ -41,7 +41,7 @@ RUN apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Instala COLMAP desde código fuente
+
 RUN git clone --recursive https://github.com/colmap/colmap.git /colmap && \
     cd /colmap && \
     git checkout tags/3.12.3 -b v3.12.3 && \
@@ -50,14 +50,14 @@ RUN git clone --recursive https://github.com/colmap/colmap.git /colmap && \
     ninja && \
     ninja install
 
-# Añade colmap2nerf.py automáticamente
+
 RUN mkdir -p /colmap/scripts/python && \
     wget -O /colmap/scripts/python/colmap2nerf.py https://raw.githubusercontent.com/NVlabs/instant-ngp/refs/heads/master/scripts/colmap2nerf.py
 
-# Instala dependencias Python
+
 RUN pip3 install numpy opencv-python
 
-# Prepara el entorno de trabajo
+
 WORKDIR /app
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
