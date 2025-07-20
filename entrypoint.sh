@@ -20,6 +20,7 @@ echo "==> Copiando imágenes al directorio de entrenamiento: $DATA_PATH"
 mkdir -p "$DATA_PATH/images"
 cp -r /tmp/tmp_cloned/${DATASET_NAME}/* "$DATA_PATH/images"
 
+mkdir -p ${DATA_PATH:?}/colmap"
 echo "==> Ejecutando COLMAP..."
 colmap automatic_reconstructor \
     --image_path "$DATA_PATH/images" \
