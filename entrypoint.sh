@@ -7,6 +7,7 @@ set -euo pipefail
 : "${GH_KEY:?Variable GH_KEY no definida}"
 : "${IMG_COPY_MODE:?Variable IMG_COPY_MODE no definida}" 
 : "${IMG_TYPE:?Variable IMG_TYPE no definida}" 
+
 echo "==> Limpieza previa de datos temporales y anteriores"
 rm -rf /tmp/tmp_cloned
 rm -rf "${DATA_PATH:?}/colmap"
@@ -52,7 +53,7 @@ fi
 echo "==> Generando transforms.json para Instant-NGP en formato OpenCV..."
 if ! python3 /colmap/scripts/python/colmap2nerf.py \
     --images "$DATA_PATH/images" \
-    --text "$DATA_PATH/colmap" \
+    --colmap_db "$DATA_PATH/colmap/database.db" \
     --out "$DATA_PATH/transforms.json" \
     --colmap_camera_model OPENCV \
     --aabb_scale 2; then
