@@ -6,7 +6,7 @@ set -euo pipefail
 : "${DATASET_NAME:?Variable DATASET_NAME no definida}"
 : "${GH_KEY:?Variable GH_KEY no definida}"
 : "${IMG_COPY_MODE:?Variable IMG_COPY_MODE no definida}" 
-
+: "${IMG_TYPE:?Variable IMG_TYPE no definida}" 
 echo "==> Limpieza previa de datos temporales y anteriores"
 rm -rf /tmp/tmp_cloned
 rm -rf "${DATA_PATH:?}/colmap"
@@ -28,11 +28,11 @@ mkdir -p "$DATA_PATH/images"
 
 if [ "$IMG_COPY_MODE" == "TOTAL" ]; then
     # Si IMG_COPY_MODE es TOTAL, copiar todas las imágenes
-    cp -r /tmp/tmp_cloned/${DATASET_NAME}/images/* "$DATA_PATH/images"
+    cp -r /tmp/tmp_cloned/${DATASET_NAME}/images/*.${IMG_TYPE} "$DATA_PATH/images"
 elif [[ "$IMG_COPY_MODE" =~ ^[0-9]+$ ]]; then
     # Si IMG_COPY_MODE es un número entero, copiar solo las primeras r imágenes
     for i in $(seq 0 $((IMG_COPY_MODE - 1))); do
-        cp "/tmp/tmp_cloned/${DATASET_NAME}/images/r_${i}" "$DATA_PATH/images"
+        cp "/tmp/tmp_cloned/${DATASET_NAME}/images/r_${i}.${IMG_TYPE}" "$DATA_PATH/images"
     done
 else
     echo "Error: IMG_COPY_MODE debe ser 'TOTAL' o un número entero."
