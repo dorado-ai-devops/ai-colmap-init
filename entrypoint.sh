@@ -5,7 +5,7 @@ set -euo pipefail
 : "${DATA_PATH:?Variable DATA_PATH no definida}"
 : "${DATASET_NAME:?Variable DATASET_NAME no definida}"
 : "${GH_KEY:?Variable GH_KEY no definida}"
-: "${IMG_TOTAL_SIZE:?Variable IMG_TOTAL_SIZE no definida}" 
+: "${IMG_COPY_MODE:?Variable IMG_COPY_MODE no definida}" 
 
 echo "==> Limpieza previa de datos temporales y anteriores"
 rm -rf /tmp/tmp_cloned
@@ -26,16 +26,16 @@ git clone git@github.com:dorado-ai-devops/ai-nerf-datasets.git /tmp/tmp_cloned
 echo "==> Copiando imágenes al directorio de entrenamiento: $DATA_PATH"
 mkdir -p "$DATA_PATH/images"
 
-if [ "$IMG_TOTAL_SIZE" == "TOTAL" ]; then
-    # Si IMG_TOTAL_SIZE es TOTAL, copiar todas las imágenes
+if [ "$IMG_COPY_MODE" == "TOTAL" ]; then
+    # Si IMG_COPY_MODE es TOTAL, copiar todas las imágenes
     cp -r /tmp/tmp_cloned/${DATASET_NAME}/images/* "$DATA_PATH/images"
-elif [[ "$IMG_TOTAL_SIZE" =~ ^[0-9]+$ ]]; then
-    # Si IMG_TOTAL_SIZE es un número entero, copiar solo las primeras r imágenes
-    for i in $(seq 0 $((IMG_TOTAL_SIZE - 1))); do
+elif [[ "$IMG_COPY_MODE" =~ ^[0-9]+$ ]]; then
+    # Si IMG_COPY_MODE es un número entero, copiar solo las primeras r imágenes
+    for i in $(seq 0 $((IMG_COPY_MODE - 1))); do
         cp "/tmp/tmp_cloned/${DATASET_NAME}/images/r_${i}" "$DATA_PATH/images"
     done
 else
-    echo "Error: IMG_TOTAL_SIZE debe ser 'TOTAL' o un número entero."
+    echo "Error: IMG_COPY_MODE debe ser 'TOTAL' o un número entero."
     exit 1
 fi
 
