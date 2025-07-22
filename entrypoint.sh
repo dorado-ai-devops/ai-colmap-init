@@ -45,6 +45,9 @@ echo "==> Ejecutando COLMAP..."
 if ! colmap automatic_reconstructor \
     --image_path "$DATA_PATH/images" \
     --workspace_path "$DATA_PATH/colmap" \
+    --SiftExtraction.num_threads 12 \
+    --SiftMatching.num_threads 12 \
+    --Mapper.num_threads 12 \
     --use_gpu 1; then
     echo "Error: Falló el proceso de generacion de matrices de cámara con COLMAP"
     exit 1
