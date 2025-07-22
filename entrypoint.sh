@@ -54,7 +54,9 @@ echo "==> Convirtiendo modelo COLMAP a formato TXT..."
 if ! colmap model_converter \
     --input_path "$DATA_PATH/colmap/sparse/0" \
     --output_path "$DATA_PATH/colmap/sparse/0_text" \
-    --output_type TXT
+    --output_type TXT; then
+    echo "Error: Falló la conversión del modelo COLMAP a formato TXT"
+    exit 1
 fi
 
 echo "==> Generando transforms.json para Instant-NGP en formato OpenCV..."
