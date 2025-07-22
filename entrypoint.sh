@@ -50,6 +50,7 @@ if ! colmap automatic_reconstructor \
     exit 1
 fi
 
+mkdir -p "${DATA_PATH:?}/colmap/sparse/0_text"
 echo "==> Convirtiendo modelo COLMAP a formato TXT..."
 if ! colmap model_converter \
     --input_path "$DATA_PATH/colmap/sparse/0" \
