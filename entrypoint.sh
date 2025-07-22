@@ -53,6 +53,7 @@ fi
 echo "==> Generando transforms.json para Instant-NGP en formato OpenCV..."
 if ! python3 /colmap/scripts/python/colmap2nerf.py \
     --images "$DATA_PATH/images" \
+    --sparse "$DATA_PATH/colmap/dense/0/sparse" \
     --colmap_db "$DATA_PATH/colmap/database.db" \
     --out "$DATA_PATH/transforms.json" \
     --colmap_camera_model OPENCV \
