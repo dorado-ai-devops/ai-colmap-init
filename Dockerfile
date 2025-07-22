@@ -55,10 +55,12 @@ RUN mkdir -p /colmap/scripts/python && \
     wget -O /colmap/scripts/python/colmap2nerf.py https://raw.githubusercontent.com/NVlabs/instant-ngp/refs/heads/master/scripts/colmap2nerf.py
 
 
-RUN pip3 install numpy opencv-python
-
+RUN pip3 install --upgrade pip && \
+    pip3 install numpy opencv-python
 
 WORKDIR /app
+
+
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 

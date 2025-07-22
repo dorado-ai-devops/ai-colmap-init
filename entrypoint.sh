@@ -41,7 +41,7 @@ else
 fi
 
 mkdir -p "${DATA_PATH:?}/colmap"
-echo "==> Ejecutando COLMAP..."
+echo "==> Ejecutando reconstruccion COLMAP..."
 if ! colmap automatic_reconstructor \
     --image_path "$DATA_PATH/images" \
     --workspace_path "$DATA_PATH/colmap" \
@@ -50,16 +50,21 @@ if ! colmap automatic_reconstructor \
     exit 1
 fi
 
+echo "==> Convirtiendo modelo COLMAP a formato TXT..."
+if ! colmap model_converter \
+    --input_path "$DATA_PATH/colmap/sparse/0" \
+    --output_path "$DATA_PATH/colmap/sparse/0_text" \
+    --output_type TXT
+fi
+
 echo "==> Generando transforms.json para Instant-NGP en formato OpenCV..."
 if ! python3 /colmap/scripts/python/colmap2nerf.py \
     --images "$DATA_PATH/images" \
-    --sparse "$DATA_PATH/colmap/dense/0/sparse" \
+    --text "$DATA_PATH/colmap/sparse/0_text" \
     --colmap_db "$DATA_PATH/colmap/database.db" \
     --out "$DATA_PATH/transforms.json" \
     --colmap_camera_model OPENCV \
-    --aabb_scale 2; then
-    echo "Error: Falló la generación de transforms.json con colmap2nerf.py para OpenCV"
-    exit 1
+    --aabb_scale 2
 fi
 
 

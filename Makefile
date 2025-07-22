@@ -1,5 +1,5 @@
 IMAGE_NAME     := colmap-init
-VERSION        := v0.1.13
+VERSION        := v0.1.14
 REGISTRY       := localhost:5000
 HELM_VALUES    := ../devops-ai-lab/manifests/helm-instant-ngp/values.yaml
 
@@ -8,7 +8,7 @@ HELM_VALUES    := ../devops-ai-lab/manifests/helm-instant-ngp/values.yaml
 all: release
 
 build:
-	docker build --no-cache -t $(IMAGE_NAME):$(VERSION) .
+	docker build -t $(IMAGE_NAME):$(VERSION) .
 
 tag: build
 	docker tag $(IMAGE_NAME):$(VERSION) $(REGISTRY)/$(IMAGE_NAME):$(VERSION)
