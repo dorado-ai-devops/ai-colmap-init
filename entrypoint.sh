@@ -50,6 +50,7 @@ if ! colmap automatic_reconstructor \
     exit 1
 fi
 
+
 mkdir -p "${DATA_PATH:?}/colmap/sparse/0_text"
 echo "==> Convirtiendo modelo COLMAP a formato TXT..."
 if ! colmap model_converter \
@@ -67,7 +68,9 @@ if ! python3 /colmap/scripts/python/colmap2nerf.py \
     --colmap_db "$DATA_PATH/colmap/database.db" \
     --out "$DATA_PATH/transforms.json" \
     --colmap_camera_model OPENCV \
-    --aabb_scale 2
+    --aabb_scale 2; then
+    echo "Error: Falló la generación de transforms.json"
+    exit 1
 fi
 
 
