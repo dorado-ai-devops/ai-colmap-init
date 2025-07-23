@@ -78,7 +78,7 @@ python3 /colmap/scripts/python/colmap2nerf.py \
 EXIT_CODE=$?
 
 if [ "$EXIT_CODE" -ne 0 ]; then
-    echo "❌ Error: colmap2nerf.py falló con código $EXIT_CODE"
+    echo "Error: colmap2nerf.py falló con código $EXIT_CODE"
     echo "--- STDOUT ---"
     cat "${DATA_PATH}/colmap2nerf_stdout.log"
     echo "--- STDERR ---"
@@ -87,15 +87,15 @@ if [ "$EXIT_CODE" -ne 0 ]; then
 fi
 
 if [ ! -f "$TRANSFORMS_PATH" ]; then
-    echo "❌ Error: No se encontró transforms.json después de la conversión"
+    echo "Error: No se encontró transforms.json después de la conversión"
     echo "--- STDERR ---"
     cat "${DATA_PATH}/colmap2nerf_stderr.log"
     exit 1
 fi
 
-echo "✅ transforms.json generado correctamente en ${TRANSFORMS_PATH}"
-echo "📦 Tamaño: $(du -h "$TRANSFORMS_PATH" | cut -f1)"
-echo "🧪 Validación rápida (primeras líneas):"
+echo "transforms.json generado correctamente en ${TRANSFORMS_PATH}"
+echo "Tamaño: $(du -h "$TRANSFORMS_PATH" | cut -f1)"
+echo "Validación rápida (primeras líneas):"
 head -n 20 "$TRANSFORMS_PATH"
 
 
