@@ -8,12 +8,6 @@ set -euo pipefail
 : "${IMG_COPY_MODE:?Variable IMG_COPY_MODE no definida}" 
 : "${IMG_TYPE:?Variable IMG_TYPE no definida}" 
 
-echo "==> Limpieza previa de datos temporales y anteriores"
-rm -rf /tmp/tmp_cloned
-rm -rf "${DATA_PATH:?}/colmap"
-rm -rf "${DATA_PATH:?}/images"
-rm -f "${DATA_PATH:?}/transforms.json"
-
 
 echo "==> Configurando SSH"
 mkdir -p /root/.ssh
