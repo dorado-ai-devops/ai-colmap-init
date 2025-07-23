@@ -68,9 +68,8 @@ colmap mapper \
   --image_path "$DATA_PATH/images" \
   --output_path "$SPARSE_DIR" \
   --Mapper.ba_global_max_refinements 5 \
-  --Mapper.min_num_matches 15 \
-  --Mapper.init_min_tri_angle 2
-  
+  --Mapper.min_num_matches 5 \
+  --Mapper.init_min_tri_angle 1
 
 # 5. Conversión a TXT
 echo "==> Convirtiendo modelo a formato TXT"
