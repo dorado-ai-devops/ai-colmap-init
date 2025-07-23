@@ -92,14 +92,19 @@ python3 /colmap/scripts/python/colmap2nerf.py \
   2> "$DATA_PATH/colmap2nerf_stderr.log"
 
 if [ ! -f "$TRANSFORMS_PATH" ]; then
-    echo "❌ Error: No se generó transforms.json"
+    echo "Error: No se generó transforms.json"
     cat "$DATA_PATH/colmap2nerf_stderr.log"
     exit 1
 fi
 
-echo "✅ transforms.json generado correctamente"
-echo "🔎 Primeras líneas:"
+# 7. Finalización de la generación
+echo "transforms.json generado correctamente"
+echo "Primeras líneas:"
 head -n 20 "$TRANSFORMS_PATH"
 
-echo "📦 Dataset listo en $DATA_PATH"
+# 8. Corrección de rutas relativas en transforms.json
+echo "Corrigiendo rutas relativas en transforms.json"
+python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
+
+echo "Dataset listo en $DATA_PATH"
 echo "  - Imágenes: $(ls "$DATA_PATH/images" | wc -l)"
