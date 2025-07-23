@@ -4,7 +4,6 @@ set -euo pipefail
 : "${DATA_PATH:?Variable DATA_PATH no definida}"
 : "${DATASET_NAME:?Variable DATASET_NAME no definida}"
 : "${GH_KEY:?Variable GH_KEY no definida}"
-: "${IMG_COPY_MODE:?Variable IMG_COPY_MODE no definida}" 
 : "${IMG_TYPE:?Variable IMG_TYPE no definida}" 
 
 echo "==> Configurando SSH"
