@@ -71,6 +71,15 @@ colmap mapper \
   --Mapper.min_num_matches 5 \
   --Mapper.init_min_tri_angle 1
 
+# 4.1 Análisis del modelo
+echo "==> Analizando modelo COLMAP"
+colmap model_analyzer --path "$SPARSE_DIR/0" | tee "$SPARSE_DIR/0_analysis.txt"
+
+IMAGES_REG=$(colmap model_analyzer --path "$SPARSE_DIR/0" | grep 'Images:' | awk '{print $2}')
+if [ "$IMAGES_REG" -lt 5 ]; then
+  echo "Reconstrucción fallida: solo $IMAGES_REG cámaras detectadas"; exit 1
+fi
+
 # 5. Conversión a TXT
 echo "==> Convirtiendo modelo a formato TXT"
 mkdir -p "$TEXT_DIR"
