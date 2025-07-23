@@ -61,6 +61,8 @@ RUN pip3 install --upgrade pip && \
 WORKDIR /app
 
 COPY fix_relative_img_paths.py .
+
+
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
