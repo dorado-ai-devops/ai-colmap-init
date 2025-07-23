@@ -62,16 +62,41 @@ if ! colmap model_converter \
 fi
 
 echo "==> Generando transforms.json para Instant-NGP en formato OpenCV..."
-if ! python3 /colmap/scripts/python/colmap2nerf.py \
-    --images "$DATA_PATH/images" \
-    --text "$DATA_PATH/colmap/sparse/0_text" \
-    --colmap_db "$DATA_PATH/colmap/database.db" \
-    --out "$DATA_PATH/transforms.json" \
-    --colmap_camera_model OPENCV \
-    --aabb_scale 2; then
-    echo "Error: Falló la generación de transforms.json"
+
+TRANSFORMS_PATH="${DATA_PATH}/transforms.json"
+
+python3 /colmap/scripts/python/colmap2nerf.py \
+  --images "$DATA_PATH/images" \
+  --text "$DATA_PATH/colmap/sparse/0_text" \
+  --colmap_db "$DATA_PATH/colmap/database.db" \
+  --out "$TRANSFORMS_PATH" \
+  --colmap_camera_model OPENCV \
+  --aabb_scale 2 \
+  > "${DATA_PATH}/colmap2nerf_stdout.log" \
+  2> "${DATA_PATH}/colmap2nerf_stderr.log"
+
+EXIT_CODE=$?
+
+if [ "$EXIT_CODE" -ne 0 ]; then
+    echo "❌ Error: colmap2nerf.py falló con código $EXIT_CODE"
+    echo "--- STDOUT ---"
+    cat "${DATA_PATH}/colmap2nerf_stdout.log"
+    echo "--- STDERR ---"
+    cat "${DATA_PATH}/colmap2nerf_stderr.log"
     exit 1
 fi
+
+if [ ! -f "$TRANSFORMS_PATH" ]; then
+    echo "❌ Error: No se encontró transforms.json después de la conversión"
+    echo "--- STDERR ---"
+    cat "${DATA_PATH}/colmap2nerf_stderr.log"
+    exit 1
+fi
+
+echo "✅ transforms.json generado correctamente en ${TRANSFORMS_PATH}"
+echo "📦 Tamaño: $(du -h "$TRANSFORMS_PATH" | cut -f1)"
+echo "🧪 Validación rápida (primeras líneas):"
+head -n 20 "$TRANSFORMS_PATH"
 
 
 if [ ! -f "$DATA_PATH/transforms.json" ]; then
