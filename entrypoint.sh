@@ -68,8 +68,9 @@ colmap mapper \
   --image_path "$DATA_PATH/images" \
   --output_path "$SPARSE_DIR" \
   --Mapper.ba_global_max_refinements 5 \
-  --Mapper.min_num_matches 5 \
-  --Mapper.init_min_tri_angle 1
+  --Mapper.min_num_matches 15 \
+  --Mapper.init_min_tri_angle 2
+  
 
 # 5. Conversión a TXT
 echo "==> Convirtiendo modelo a formato TXT"
@@ -103,8 +104,8 @@ echo "Primeras líneas:"
 head -n 20 "$TRANSFORMS_PATH"
 
 # 8. Corrección de rutas relativas en transforms.json
-#echo "Corrigiendo rutas relativas en transforms.json"
-#python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
+echo "Corrigiendo rutas relativas en transforms.json"
+python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
 
 echo "Dataset listo en $DATA_PATH"
 echo "  - Imágenes: $(ls "$DATA_PATH/images" | wc -l)"
