@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
 ENV CC=/usr/bin/gcc-10
 ENV CXX=/usr/bin/g++-10
 ENV CUDAHOSTCXX=/usr/bin/g++-10
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 
 RUN apt-get install -y \
