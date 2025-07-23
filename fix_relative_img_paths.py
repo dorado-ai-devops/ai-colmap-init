@@ -26,7 +26,7 @@ for frame in data.get("frames", []):
 with open(transforms_path, 'w') as f:
     json.dump(data, f, indent=2)
 
-print(f"✅ {updated_count} rutas actualizadas en transforms.json hacia imágenes en '{images_dir}'")
+print(f"{updated_count} rutas actualizadas en transforms.json hacia imágenes en '{images_dir}'")
 
 if missing_files:
     print("ERROR Rutas no corregidas:")
@@ -34,4 +34,4 @@ if missing_files:
         print(f" - {path}")
     sys.exit(1)
 else:
-    print("✅ Verificación completa: todos los archivos existen.")
+    print("Verificación completa: todos los archivos existen.")
