@@ -36,14 +36,19 @@ RUN apt-get install -y \
     libopenblas-dev \
     libcgal-qt5-dev \
     python3-pip \
-    colmap \
     ssh \
     wget \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 
-
+RUN git clone --recursive https://github.com/colmap/colmap.git /colmap && \
+    cd /colmap && \
+    git checkout tags/3.12.3 -b v3.12.3 && \
+    mkdir /colmap/build && cd /colmap/build && \
+    cmake .. -GNinja -DCMAKE_CUDA_ARCHITECTURES=86 && \
+    ninja && \
+    ninja install
 
 
 RUN mkdir -p /colmap/scripts/python && \
@@ -55,9 +60,7 @@ RUN pip3 install --upgrade pip && \
 
 WORKDIR /app
 
-COPY fix_relative_img_paths.py .
-
-
+COPY fix_relative_img_paths.py
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
