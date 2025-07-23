@@ -4,6 +4,7 @@ set -euo pipefail
 : "${DATA_PATH:?Variable DATA_PATH no definida}"
 : "${DATASET_NAME:?Variable DATASET_NAME no definida}"
 : "${GH_KEY:?Variable GH_KEY no definida}"
+: "${IMG_COPY_MODE:?Variable IMG_COPY_MODE no definida}" 
 : "${IMG_TYPE:?Variable IMG_TYPE no definida}" 
 
 echo "==> Configurando SSH"
@@ -18,9 +19,16 @@ git clone git@github.com:dorado-ai-devops/ai-nerf-datasets.git /tmp/tmp_cloned
 echo "==> Copiando imágenes al directorio de entrenamiento: $DATA_PATH"
 mkdir -p "$DATA_PATH/images"
 
-# Copiar ds
-cp -r /tmp/tmp_cloned/${DATASET_NAME}/images/* "$DATA_PATH/images"
-
+if [ "$IMG_COPY_MODE" == "TOTAL" ]; then
+    cp -r /tmp/tmp_cloned/${DATASET_NAME}/images/*.${IMG_TYPE} "$DATA_PATH/images"
+elif [[ "$IMG_COPY_MODE" =~ ^[0-9]+$ ]]; then
+    for i in $(seq 0 $((IMG_COPY_MODE - 1))); do
+        cp "/tmp/tmp_cloned/${DATASET_NAME}/images/r_${i}.${IMG_TYPE}" "$DATA_PATH/images"
+    done
+else
+    echo "Error: IMG_COPY_MODE debe ser 'TOTAL' o un número entero."
+    exit 1
+fi
 
 echo "==> Ejecutando pipeline COLMAP paso a paso..."
 
