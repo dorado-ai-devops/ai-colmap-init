@@ -19,7 +19,7 @@ echo "==> Copiando imágenes al directorio de entrenamiento: $DATA_PATH"
 mkdir -p "$DATA_PATH/images"
 
 # Copiar ds
-cp -r /tmp/tmp_cloned/${DATASET_NAME}/images/*.${IMG_TYPE} "$DATA_PATH/images"
+cp -r /tmp/tmp_cloned/${DATASET_NAME}/images/* "$DATA_PATH/images"
 
 
 echo "==> Ejecutando pipeline COLMAP paso a paso..."
