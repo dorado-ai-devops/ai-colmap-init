@@ -102,6 +102,7 @@ fi
 echo "transforms.json generado correctamente"
 echo "Primeras líneas:"
 head -n 20 "$TRANSFORMS_PATH"
+cp "$TRANSFORMS_PATH" "$DATA_PATH/transforms.json_backup"
 
 # 8. Corrección de rutas relativas en transforms.json
 echo "Corrigiendo rutas relativas en transforms.json"
