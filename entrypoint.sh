@@ -50,29 +50,24 @@ colmap feature_extractor \
   --ImageReader.camera_model OPENCV \
   --SiftExtraction.use_gpu 1
 
-# 2. Matching secuencial
-echo "==> Realizando matching secuencial"
-colmap sequential_matcher \
-  --database_path "$DB_PATH" \
-  --SiftMatching.use_gpu 1
-
-# 3. Matching exhaustivo complementario
+# 2. Matching exhaustivo complementario
 echo "==> Realizando matching exhaustivo complementario"
 colmap exhaustive_matcher \
   --database_path "$DB_PATH"
 
-# 4. Mapeo
+# 3. Mapeo
 echo "==> Reconstruyendo modelo (mapper)"
 mkdir -p "$SPARSE_DIR"
 colmap mapper \
   --database_path "$DB_PATH" \
   --image_path "$DATA_PATH/images" \
   --output_path "$SPARSE_DIR" \
-  --Mapper.ba_global_max_refinements 5 \
-  --Mapper.min_num_matches 5 \
-  --Mapper.init_min_tri_angle 1
+  --Mapper.ba_global_max_refinements 10 \
+  --Mapper.min_num_matches 3 \
+  --Mapper.init_min_tri_angle 0.5 \
+  --Mapper.abs_pose_min_num_inliers 10
 
-# 5. Conversión a TXT
+# 4. Conversión a TXT
 echo "==> Convirtiendo modelo a formato TXT"
 mkdir -p "$TEXT_DIR"
 colmap model_converter \
@@ -80,7 +75,7 @@ colmap model_converter \
   --output_path "$TEXT_DIR" \
   --output_type TXT
 
-# 6. Generación de transforms.json
+# 5. Generación de transforms.json
 echo "==> Generando transforms.json"
 python3 /colmap/scripts/python/colmap2nerf.py \
   --images "$DATA_PATH/images" \
@@ -98,13 +93,13 @@ if [ ! -f "$TRANSFORMS_PATH" ]; then
     exit 1
 fi
 
-# 7. Finalización de la generación
+# 6. Finalización de la generación
 echo "transforms.json generado correctamente"
 echo "Primeras líneas:"
 head -n 20 "$TRANSFORMS_PATH"
 cp "$TRANSFORMS_PATH" "$DATA_PATH/transforms.json_backup"
 
-# 8. Corrección de rutas relativas en transforms.json
+# 7. Corrección de rutas relativas en transforms.json
 echo "Corrigiendo rutas relativas en transforms.json"
 python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
 
