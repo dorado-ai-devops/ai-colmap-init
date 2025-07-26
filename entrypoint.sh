@@ -107,3 +107,7 @@ python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
 
 echo "Dataset listo en $DATA_PATH"
 echo "  - Imágenes: $(ls "$DATA_PATH/images" | wc -l)"
+
+# 8. Downscaling 
+FACTOR=2
+python /app/downscale_dataset.py "$DATA_PATH" "$FACTOR"

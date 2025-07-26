@@ -59,10 +59,13 @@ RUN mkdir -p /colmap/scripts/python && \
 RUN pip3 install --upgrade pip && \
     pip3 install numpy opencv-python
 
+RUN pip3 install pillow
+
 WORKDIR /app
 
 COPY fix_relative_img_paths.py .
 COPY entrypoint.sh .
+COPY downscale.py /app/downscale.py
 RUN chmod +x entrypoint.sh
 
 ENTRYPOINT ["/app/entrypoint.sh"]
