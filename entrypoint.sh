@@ -13,7 +13,7 @@ echo "$GH_KEY" > /root/.ssh/id_rsa
 chmod 600 /root/.ssh/id_rsa
 ssh-keyscan github.com >> /root/.ssh/known_hosts
 
-echo "==> Clonando dataset..."
+echo "==> Clonando dataset... ${DATASET_NAME}"
 git clone git@github.com:dorado-ai-devops/ai-nerf-datasets.git /tmp/tmp_cloned
 
 echo "==> Copiando imágenes al directorio de entrenamiento: $DATA_PATH"
