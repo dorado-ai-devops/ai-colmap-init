@@ -108,4 +108,4 @@ echo "  - Imágenes: $(ls "$DATA_PATH/images" | wc -l)"
 
 # 8. Downscaling 
 FACTOR=2
-python /app/downscale_dataset.py "$DATA_PATH" "$FACTOR"
+python3 /app/downscale_dataset.py "$DATA_PATH" "$FACTOR"
