@@ -11,13 +11,13 @@ from pathlib import Path
 from PIL import Image
 
 DATA   = Path(sys.argv[1]).expanduser()
-FACTOR = int(sys.argv[2])          # 2 ó 4
+FACTOR = int(sys.argv[2]) 
 
 src = DATA / "images"
 dst = DATA / "images_lr"
 dst.mkdir(exist_ok=True)
 
-print(f"→ Reescalando {src} → {dst} ×1/{FACTOR}")
+print(f"Reescalando {src} → {dst} ×1/{FACTOR}")
 for img in src.iterdir():
     im = Image.open(img)
     im.resize((im.width // FACTOR, im.height // FACTOR), Image.BICUBIC) \
@@ -33,4 +33,4 @@ for f in tf["frames"]:
 
 out = DATA / "transforms_lr.json"
 out.write_text(json.dumps(tf, indent=2))
-print("✔  Dataset LR listo:", out)
+print("Dataset LR listo:", out)
