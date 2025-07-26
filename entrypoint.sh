@@ -84,8 +84,6 @@ python3 /colmap/scripts/python/colmap2nerf.py \
   --colmap_db "$DB_PATH" \
   --out "$TRANSFORMS_PATH" \
   --colmap_camera_model OPENCV \
-  --auto_aabb \
-  --keep_colmap_coords
   > "$DATA_PATH/colmap2nerf_stdout.log" \
   2> "$DATA_PATH/colmap2nerf_stderr.log"
 
