@@ -66,8 +66,7 @@ colmap mapper \
   --Mapper.min_num_matches 3 \
   --Mapper.init_min_tri_angle 0.5 \
   --Mapper.abs_pose_min_num_inliers 10 \
-  --Mapper.filter_max_reproj_error=5 \
-  --tri_ignore_two_view_tracks=1
+  --Mapper.filter_max_reproj_error=5 
 
 # 4. Conversión a TXT
 echo "==> Convirtiendo modelo a formato TXT"
