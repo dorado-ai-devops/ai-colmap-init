@@ -29,7 +29,9 @@ tf      = json.loads(tf_path.read_text())
 for f in tf["frames"]:
     f["file_path"] = f["file_path"].replace("images", "images_lr")
     for k in ("fl_x", "fl_y", "cx", "cy"):
-        f[k] /= FACTOR
+        if k in f:                
+            f[k] /= FACTOR
+
 
 out = DATA / "transforms_lr.json"
 out.write_text(json.dumps(tf, indent=2))
