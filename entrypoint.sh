@@ -65,7 +65,9 @@ colmap mapper \
   --Mapper.ba_global_max_refinements 10 \
   --Mapper.min_num_matches 3 \
   --Mapper.init_min_tri_angle 0.5 \
-  --Mapper.abs_pose_min_num_inliers 10
+  --Mapper.abs_pose_min_num_inliers 10 \
+  --Mapper.filter_max_reproj_error=5 \
+  --tri_ignore_two_view_tracks=1
 
 # 4. Conversión a TXT
 echo "==> Convirtiendo modelo a formato TXT"
@@ -83,7 +85,8 @@ python3 /colmap/scripts/python/colmap2nerf.py \
   --colmap_db "$DB_PATH" \
   --out "$TRANSFORMS_PATH" \
   --colmap_camera_model OPENCV \
-  --aabb_scale 2 \
+  --auto_aabb \
+  --keep_colmap_coords
   > "$DATA_PATH/colmap2nerf_stdout.log" \
   2> "$DATA_PATH/colmap2nerf_stderr.log"
 
