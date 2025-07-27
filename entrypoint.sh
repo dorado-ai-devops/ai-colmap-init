@@ -1,49 +1,72 @@
-#!/bin/bash
-set -euo pipefail 
+#!/usr/bin/env bash
+set -euo pipefail
 
-: "${DATA_PATH:?Variable DATA_PATH no definida}"
-: "${DATASET_NAME:?Variable DATASET_NAME no definida}"
-: "${GH_KEY:?Variable GH_KEY no definida}"
-: "${IMG_COPY_MODE:?Variable IMG_COPY_MODE no definida}" 
-: "${IMG_TYPE:?Variable IMG_TYPE no definida}" 
 
-echo "==> Configurando SSH"
-mkdir -p /root/.ssh
+#helpers
+log()  { local tag="$1"; shift; printf '[%s] %s\n' "$tag" "$*"; }
+loge() { local tag="$1"; shift; printf '[%s][ERROR] %s\n' "$tag" "$*" >&2; }
+die()  { loge "GENERAL" "$*"; exit 1; }
+
+
+dbg_trap() { loge "GENERAL" "Abortado en la línea $LINENO"; }
+trap dbg_trap ERR
+
+ensure_dir() { mkdir -p "$1"; }
+
+prepare_dirs() {
+  ensure_dir /root/.ssh
+  ensure_dir "$DATA_PATH/images"
+  ensure_dir "$DATA_PATH/images_centered"
+  ensure_dir "$DATA_PATH/colmap/sparse/0_text"
+}
+
+check_env() {
+  local required=(DATA_PATH DATASET_NAME GH_KEY IMG_COPY_MODE IMG_TYPE)
+  for var in "${required[@]}"; do
+    [[ -z "${!var:-}" ]] && die "Variable $var no definida"
+  done
+}
+
+############################################################
+# START
+############################################################
+check_env
+prepare_dirs
+
+log "SSH" "Configurando SSH"
 echo "$GH_KEY" > /root/.ssh/id_rsa
 chmod 600 /root/.ssh/id_rsa
 ssh-keyscan github.com >> /root/.ssh/known_hosts
 
-echo "==> Clonando dataset... ${DATASET_NAME}"
-git clone git@github.com:dorado-ai-devops/ai-nerf-datasets.git /tmp/tmp_cloned
+log "DATASET" "Clonando dataset ${DATASET_NAME}"
+git clone --depth 1 git@github.com:dorado-ai-devops/ai-nerf-datasets.git /tmp/tmp_cloned
 
-echo "==> Copiando imágenes al directorio de entrenamiento: $DATA_PATH"
-mkdir -p "$DATA_PATH/images"
-
-if [ "$IMG_COPY_MODE" == "TOTAL" ]; then
-    cp -r /tmp/tmp_cloned/${DATASET_NAME}/images/*.${IMG_TYPE} "$DATA_PATH/images"
-elif [[ "$IMG_COPY_MODE" =~ ^[0-9]+$ ]]; then
+log "DATASET" "Copiando imágenes a $DATA_PATH/images"
+case "$IMG_COPY_MODE" in
+  TOTAL)
+    cp /tmp/tmp_cloned/${DATASET_NAME}/images/*.${IMG_TYPE} "$DATA_PATH/images" ;;
+  ''|*[!0-9]*)
+    die "IMG_COPY_MODE debe ser 'TOTAL' o un número entero." ;;
+  *)
     for i in $(seq 0 $((IMG_COPY_MODE - 1))); do
-        cp "/tmp/tmp_cloned/${DATASET_NAME}/images/r_${i}.${IMG_TYPE}" "$DATA_PATH/images"
-    done
-else
-    echo "Error: IMG_COPY_MODE debe ser 'TOTAL' o un número entero."
-    exit 1
-fi
+      cp "/tmp/tmp_cloned/${DATASET_NAME}/images/r_${i}.${IMG_TYPE}" "$DATA_PATH/images"
+    done ;;
+esac
 
-echo "==> Aplicando SAM para centrar objetos en las imágenes"
-
-python3 /app/center_with_sam.py \
+log "SAM" "Centrando objetos y removiendo fondos"
+/venv_sr/bin/python3 /app/center_with_sam.py \
   --input "$DATA_PATH/images" \
   --output "$DATA_PATH/images_centered" \
-  --checkpoint /app/sam_vit_b.pth \
+  --checkpoint /app/checkpoints/sam_vit_b.pth \
   --size 768
 
-echo "==> Sustituyendo imágenes originales por centradas"
 rm -rf "$DATA_PATH/images"
 mv "$DATA_PATH/images_centered" "$DATA_PATH/images"
+log "SAM" "Imágenes reemplazadas por versiones centradas"
 
-echo "==> Ejecutando pipeline COLMAP"
-
+############################################################
+# COLMAP
+############################################################
 COLMAP_DIR="$DATA_PATH/colmap"
 SPARSE_DIR="$COLMAP_DIR/sparse"
 TEXT_DIR="$SPARSE_DIR/0_text"
@@ -51,10 +74,9 @@ DB_PATH="$COLMAP_DIR/database.db"
 TRANSFORMS_PATH="$DATA_PATH/transforms.json"
 
 rm -rf "$COLMAP_DIR" "$TRANSFORMS_PATH"
-mkdir -p "$COLMAP_DIR"
+ensure_dir "$TEXT_DIR"
 
-# 1. Extracción de características
-echo "==> Extrayendo características"
+log "COLMAP" "Extrayendo características"
 colmap feature_extractor \
   --database_path "$DB_PATH" \
   --image_path "$DATA_PATH/images" \
@@ -62,14 +84,10 @@ colmap feature_extractor \
   --ImageReader.camera_model OPENCV \
   --SiftExtraction.use_gpu 1
 
-# 2. Matching exhaustivo complementario
-echo "==> Realizando matching exhaustivo complementario"
-colmap exhaustive_matcher \
-  --database_path "$DB_PATH"
+log "COLMAP" "Matching exhaustivo complementario"
+colmap exhaustive_matcher --database_path "$DB_PATH"
 
-# 3. Mapeo
-echo "==> Reconstruyendo modelo (mapper)"
-mkdir -p "$SPARSE_DIR"
+log "COLMAP" "Reconstruyendo modelo (mapper)"
 colmap mapper \
   --database_path "$DB_PATH" \
   --image_path "$DATA_PATH/images" \
@@ -78,18 +96,15 @@ colmap mapper \
   --Mapper.min_num_matches 3 \
   --Mapper.init_min_tri_angle 0.5 \
   --Mapper.abs_pose_min_num_inliers 10 \
-  --Mapper.filter_max_reproj_error=5 
+  --Mapper.filter_max_reproj_error 5
 
-# 4. Conversión a TXT
-echo "==> Convirtiendo modelo a formato TXT"
-mkdir -p "$TEXT_DIR"
+log "COLMAP" "Convirtiendo modelo a TXT"
 colmap model_converter \
   --input_path "$SPARSE_DIR/0" \
   --output_path "$TEXT_DIR" \
   --output_type TXT
 
-# 5. Generación de transforms.json
-echo "==> Generando transforms.json"
+log "COLMAP" "Generando transforms.json"
 python3 /colmap/scripts/python/colmap2nerf.py \
   --images "$DATA_PATH/images" \
   --text "$TEXT_DIR" \
@@ -99,25 +114,16 @@ python3 /colmap/scripts/python/colmap2nerf.py \
   > "$DATA_PATH/colmap2nerf_stdout.log" \
   2> "$DATA_PATH/colmap2nerf_stderr.log"
 
-if [ ! -f "$TRANSFORMS_PATH" ]; then
-    echo "Error: No se generó transforms.json"
-    cat "$DATA_PATH/colmap2nerf_stderr.log"
-    exit 1
-fi
+[[ -f "$TRANSFORMS_PATH" ]] || die "No se generó transforms.json"
 
-# 6. Finalización de la generación
-echo "transforms.json generado correctamente"
-echo "Primeras líneas:"
+log "COLMAP" "transforms.json generado correctamente"
 head -n 20 "$TRANSFORMS_PATH"
 cp "$TRANSFORMS_PATH" "$DATA_PATH/transforms.json_backup"
 
-# 7. Corrección de rutas relativas en transforms.json
-echo "Corrigiendo rutas relativas en transforms.json"
+log "FIX" "Corrigiendo rutas relativas"
 python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
 
-echo "Dataset listo en $DATA_PATH"
-echo "  - Imágenes: $(ls "$DATA_PATH/images" | wc -l)"
+log "DOWNSCALE" "Reduciendo resolución x2"
+python3 /app/downscale.py "$DATA_PATH" 2
 
-# 8. Downscaling 
-FACTOR=2
-python3 /app/downscale.py "$DATA_PATH" "$FACTOR"
+log "SUMMARY" "Dataset listo en $DATA_PATH con $(ls "$DATA_PATH/images" | wc -l) imágenes"
