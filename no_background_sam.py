@@ -8,10 +8,11 @@ import argparse
 from pathlib import Path
 import time
 import logging
-from PIL import Image
+
 import cv2
 import numpy as np
 import torch
+from PIL import Image
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 from tqdm import tqdm
 from sklearn.linear_model import RANSACRegressor
@@ -50,7 +51,7 @@ mask_gen   = SamAutomaticMaskGenerator(
 )
 
 # ---------------------------------------------------------------- MiDaS
-midas = torch.hub.load("intel-isl/MiDaS", "MiDaS_small").to(device).eval()
+midas = torch.hub.load("intel-isl/MiDaS", "MiDaS_small", trust_repo=True).to(device).eval()
 midas_transform = Compose([
     Resize(192),
     ToTensor(),
@@ -88,20 +89,21 @@ def estimate_depth(img: np.ndarray) -> np.ndarray:
         depth = cv2.resize(depth_small, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
         return depth
 
-
 def mask_from_ransac(depth: np.ndarray, max_error: float = 0.03) -> np.ndarray:
     h, w = depth.shape
     ys, xs = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
     X = np.stack([xs.ravel(), ys.ravel()], axis=1)
     Z = depth.ravel()
     valid = ~np.isnan(Z)
-    X = X[valid]
-    Z = Z[valid]
+    X_valid = X[valid]
+    Z_valid = Z[valid]
+    if Z_valid.size == 0:
+        return np.zeros_like(depth, dtype=bool)
 
     model = make_pipeline(PolynomialFeatures(degree=1), RANSACRegressor(residual_threshold=max_error))
-    model.fit(X, Z)
-    Z_pred = model.predict(X)
-    residuals = np.abs(Z - Z_pred)
+    model.fit(X_valid, Z_valid)
+    Z_pred = model.predict(X_valid)
+    residuals = np.abs(Z_valid - Z_pred)
     inliers = residuals < max_error
 
     mask = np.zeros(h * w, dtype=bool)
@@ -109,7 +111,7 @@ def mask_from_ransac(depth: np.ndarray, max_error: float = 0.03) -> np.ndarray:
     return mask.reshape(h, w)
 
 # ---------------------------------------------------------------- pipeline
-for img_path in sorted(INPUT_DIR.glob("*.[jp][pn]g")):
+for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Processing"):
     start_time = time.time()
     img = cv2.imread(str(img_path))
     if img is None:
@@ -123,18 +125,27 @@ for img_path in sorted(INPUT_DIR.glob("*.[jp][pn]g")):
         continue
 
     mask_small = best_mask(masks, img_small.shape[0])
-    mask = (cv2.resize(mask_small.astype(np.uint8),
-                       dsize=(img.shape[1], img.shape[0]),
-                       interpolation=cv2.INTER_NEAREST).astype(bool)
+    mask = (cv2.resize(mask_small.astype(np.uint8), dsize=(img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST).astype(bool)
             if scale != 1.0 else mask_small)
     mask = ~mask
 
-    # Always apply depth-based wall removal
+    # Depth‑based wall removal
     depth = estimate_depth(img)
     wall_mask = mask_from_ransac(depth)
     mask[wall_mask] = False
 
-    # Then apply heuristic-based cleanup
+    # Heuristic cleanup (suelo / franjas)
+    # ----- morfología: eliminar rodapié como bandas horizontales estrechas -----
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (max(1, int(0.8 * W)), max(1, int(0.02 * H)))
+    )
+    bg = (~mask).astype(np.uint8) * 255
+    opened = cv2.morphologyEx(bg, cv2.MORPH_OPEN, kernel)
+    # marcar esas zonas como fondo
+    mask[opened > 0] = False
+
+    # Heuristic cleanup (suelo / franjas)
     H, W = mask.shape
     mask_u8 = mask.astype(np.uint8)
     n, labels, stats, _ = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
@@ -145,9 +156,7 @@ for img_path in sorted(INPUT_DIR.glob("*.[jp][pn]g")):
         touches_bottom = y + h_box >= H - 1
         touches_left   = x == 0
         touches_right  = x + w_box >= W - 1
-        is_horiz_band = (
-            (touches_bottom or touches_top) and h_box < 0.20 * H and w_box > 0.50 * W
-        )
+        is_horiz_band = ((touches_bottom or touches_top) and h_box < 0.20 * H and w_box > 0.50 * W)
         is_upper_wall = touches_top and h_box > 0.25 * H
         is_full_side_wall = touches_left and touches_right and w_box > 0.80 * W
         if not (is_horiz_band or is_upper_wall or is_full_side_wall):
@@ -160,5 +169,4 @@ for img_path in sorted(INPUT_DIR.glob("*.[jp][pn]g")):
     result[~mask] = 255
 
     cv2.imwrite(str(OUTPUT_DIR / img_path.name), result)
-    elapsed = time.time() - start_time
-    logging.info(f"{img_path.name} procesada en {elapsed:.2f}s")
+    logging.info(f"{img_path.name} → OK | {time.time() - start_time:.2f}s")
