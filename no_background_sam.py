@@ -135,6 +135,7 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Processing"):
     mask[wall_mask] = False
 
     # Heuristic cleanup (suelo / franjas)
+    H, W = mask.shape
     # ----- morfología: eliminar rodapié como bandas horizontales estrechas -----
     kernel = cv2.getStructuringElement(
         cv2.MORPH_RECT,
@@ -165,6 +166,27 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Processing"):
         cleaned = mask_u8
     mask = cleaned.astype(bool)
 
+        # Flip trick: detect wall as floor in rotated image and intersect masks
+    rot = cv2.rotate(img, cv2.ROTATE_180)
+    rot_small, rot_scale = resize_for_sam(rot, args.max_side)
+    rot_masks = mask_gen.generate(rot_small)
+    if rot_masks:
+        rot_best = best_mask(rot_masks, rot_small.shape[0])
+        rot_mask = (cv2.resize(rot_best.astype(np.uint8), (rot.shape[1], rot.shape[0]), interpolation=cv2.INTER_NEAREST).astype(bool)
+                    if rot_scale != 1.0 else rot_best)
+        rot_mask = ~rot_mask
+        # heuristic floor removal on rotated (original wall)
+        Hf, Wf = rot_mask.shape
+        u8 = rot_mask.astype(np.uint8)
+        nf, labsf, statsf, _ = cv2.connectedComponentsWithStats(u8, connectivity=8)
+        cleanf = np.zeros_like(u8)
+        for j in range(1, nf):
+            x0, y0, w0, h0, _ = statsf[j]
+            if not (y0 + h0 >= Hf - 1 and h0 < 0.20 * Hf and w0 > 0.50 * Wf):
+                cleanf[labsf == j] = 1
+        rot_mask_clean = cleanf.astype(bool)
+        rot_mask_back = cv2.rotate(rot_mask_clean.astype(np.uint8), cv2.ROTATE_180).astype(bool)
+        mask &= rot_mask_back
     result = img.copy()
     result[~mask] = 255
 
