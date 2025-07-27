@@ -19,7 +19,7 @@ parser.add_argument("--input",      required=True, help="Carpeta con imágenes")
 parser.add_argument("--output",     required=True, help="Carpeta de salida")
 parser.add_argument("--checkpoint", required=True, help="Checkpoint .pth de SAM")
 parser.add_argument("--max-side",   type=int, default=0,
-                    help="Máx. lado que vera SAM (0 = sin downscale interno)")
+                    help="Máx. lado que verá SAM (0 = sin downscale interno)")
 args = parser.parse_args()
 
 INPUT_DIR  = Path(args.input)
@@ -76,7 +76,7 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
                        dsize=(img.shape[1], img.shape[0]),
                        interpolation=cv2.INTER_NEAREST).astype(bool)
             if scale != 1.0 else mask_small)
-    mask = ~mask                       # 1) ahora 1 = objetos
+    mask = ~mask                       # 1 = objeto principal
 
     H, W = mask.shape
     mask_u8 = mask.astype(np.uint8)
@@ -92,32 +92,36 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
         touches_left   = x == 0
         touches_right  = x + w_box >= W - 1
 
-        # — reglas de descarte —
-        is_floor_band = (
-            touches_bottom and
-            h_box < 0.20 * H and
-            w_box > 0.50 * W
+        # — reglas de descarte — -------------------------------------------
+        # 1) franja horizontal pegada a borde inferior o superior
+        is_horiz_band = (
+            (touches_bottom or touches_top) and   # suelo o techo
+            h_box < 0.20 * H and                  # franja estrecha
+            w_box > 0.50 * W                      # cubre al menos la mitad del ancho
         )
 
+        # 2) pared muy alta pegada arriba
         is_upper_wall = (
             touches_top and
-            h_box > 0.25 * H            # pared alta
+            h_box > 0.25 * H
         )
 
+        # 3) pared completa izquierda‑derecha
         is_full_side_wall = (
             touches_left and touches_right and
             w_box > 0.80 * W
         )
 
-        if not (is_floor_band or is_upper_wall or is_full_side_wall):
+        if not (is_horiz_band or is_upper_wall or is_full_side_wall):
             cleaned[labels == i] = 1    # mantenemos componente
+    # ----------------------------------------------------------------------
 
     if cleaned.sum() == 0:              # fallback de seguridad
         cleaned = mask_u8
 
     mask = cleaned.astype(bool)
     result = img.copy()
-    result[~mask] = 255   
+    result[~mask] = 255                 # blanquea fondo
 
     cv2.imwrite(str(OUTPUT_DIR / img_path.name), result)
     print(f"[OK] {img_path.name} → guardado")
