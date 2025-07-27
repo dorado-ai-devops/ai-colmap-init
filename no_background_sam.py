@@ -6,12 +6,19 @@
 
 import argparse
 from pathlib import Path
+import time
+import logging
 
 import cv2
 import numpy as np
 import torch
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 from tqdm import tqdm
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
 
 # ------------------------------------------------------------------ argumentos
 parser = argparse.ArgumentParser(description="Quita fondo con SAM")
@@ -92,16 +99,17 @@ def mask_from_ransac(depth: np.ndarray, max_error: float = 0.02) -> np.ndarray:
     return mask.reshape(h, w)
 
 # ---------------------------------------------------------------- pipeline
-for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
+for img_path in sorted(INPUT_DIR.glob("*.[jp][pn]g")):
+    start_time = time.time()
     img = cv2.imread(str(img_path))
     if img is None:
-        print(f"[WARN] No se pudo leer {img_path.name}")
+        logging.warning(f"No se pudo leer {img_path.name}")
         continue
 
     img_small, scale = resize_for_sam(img, args.max_side)
     masks = mask_gen.generate(img_small)
     if not masks:
-        print(f"[WARN] Sin máscara para {img_path.name}")
+        logging.warning(f"Sin máscara para {img_path.name}")
         continue
 
     mask_small = best_mask(masks, img_small.shape[0])
@@ -142,4 +150,5 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
     result[~mask] = 255
 
     cv2.imwrite(str(OUTPUT_DIR / img_path.name), result)
-    print(f"[OK] {img_path.name} → guardado")
+    elapsed = time.time() - start_time
+    logging.info(f"{img_path.name} procesada en {elapsed:.2f}s")
