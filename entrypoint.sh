@@ -61,6 +61,9 @@ case "$IMG_COPY_MODE" in
     done ;;
 esac
 
+############################################################
+# SAM                                                      #
+############################################################
 log "SAM" "Centering objects and removing backgrounds"
 /venv_sr/bin/python3 /app/center_with_sam.py \
   --input "$DATA_PATH/images" \

@@ -1,5 +1,5 @@
 IMAGE_NAME     := colmap-init
-VERSION        := v4.0.2
+VERSION        := v4.0.3
 REGISTRY       := localhost:5000
 HELM_VALUES    := ../devops-ai-lab/manifests/helm-instant-ngp/values.yaml
 
