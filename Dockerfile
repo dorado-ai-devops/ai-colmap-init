@@ -37,6 +37,7 @@ RUN apt-get install -y \
     libopenblas-dev \
     libcgal-qt5-dev \
     python3-pip \
+    python3-venv \
     ssh \
     wget \
     curl \
@@ -61,10 +62,13 @@ RUN pip3 install --upgrade pip && \
 
 RUN pip3 install pillow
 
-#SAM
-RUN pip3 install git+https://github.com/facebookresearch/segment-anything.git \
-    && pip3 install matplotlib tqdm
-
+#SAM & TORCH venv cause numpy<2.0
+RUN python3 -m venv /venv_sr && \
+    /venv_sr/bin/pip install --upgrade pip && \
+    /venv_sr/bin/pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
+        torch==2.2.0+cu121 torchvision==0.17.0+cu121 einops && \
+    /venv_sr/bin/pip install "numpy<2" pillow tqdm opencv-python matplotlib && \
+    /venv_sr/bin/pip install git+https://github.com/facebookresearch/segment-anything.git
 
 RUN mkdir -p /app/checkpoints && \
     wget -O /app/checkpoints/sam_vit_b.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
