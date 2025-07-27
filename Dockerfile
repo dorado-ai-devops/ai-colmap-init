@@ -74,6 +74,7 @@ WORKDIR /app
 COPY fix_relative_img_paths.py .
 COPY entrypoint.sh .
 COPY downscale.py /app/downscale.py
+COPY center_with_sam.py /app/center_with_sam.py
 RUN chmod +x entrypoint.sh
 
 ENTRYPOINT ["/app/entrypoint.sh"]
