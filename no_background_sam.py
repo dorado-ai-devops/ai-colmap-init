@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""
-------
-python mask_only_sam.py \
-  --input      path/a/imagenes \
-  --output     path/salida \
-  --checkpoint path/sam_vit_b.pth \
-  --max-side   2048   # 0 = sin reducción
-"""
+# --------------------------------------------------------- no_background_sam.py
+# Aísla el objeto principal y blanquea el fondo.
+# Entrada y salida mantienen la resolución original.
+# ------------------------------------------------------------------------------
 
 import argparse
 from pathlib import Path
@@ -17,21 +13,20 @@ import torch
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 from tqdm import tqdm
 
-
-# ---------------------------------------------------------------- argumentos --
-parser = argparse.ArgumentParser(description="Aplica SAM y borra fondo (blanco)")
-parser.add_argument("--input",      required=True, help="Carpeta de entrada")
+# ------------------------------------------------------------------ argumentos
+parser = argparse.ArgumentParser(description="Quita fondo con SAM")
+parser.add_argument("--input",      required=True, help="Carpeta con imágenes")
 parser.add_argument("--output",     required=True, help="Carpeta de salida")
 parser.add_argument("--checkpoint", required=True, help="Checkpoint .pth de SAM")
-parser.add_argument("--max-side",   type=int, default=2048,
-                    help="Máx. lado que verá SAM (0 = sin downscale)")
+parser.add_argument("--max-side",   type=int, default=0,
+                    help="Máx. lado que vera SAM (0 = sin downscale interno)")
 args = parser.parse_args()
 
 INPUT_DIR  = Path(args.input)
 OUTPUT_DIR = Path(args.output)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# ----------------------------------------------------------------- SAM model --
+# ---------------------------------------------------------------- modelo SAM
 device     = "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_TYPE = "vit_b"
 sam        = sam_model_registry[MODEL_TYPE](checkpoint=args.checkpoint).to(device)
@@ -40,12 +35,12 @@ mask_gen   = SamAutomaticMaskGenerator(
     points_per_side=64,
     pred_iou_thresh=0.9,
     stability_score_thresh=0.95,
-    min_mask_region_area=4096,   # ignora motas pequeñas
+    min_mask_region_area=4096,
 )
 
-# ------------------------------------------------------------ helper funcs ----
+# -------------------------------------------------------------- utilidades
 def resize_for_sam(img: np.ndarray, max_side: int):
-    """Devuelve una versión reducida y el factor de escala."""
+    """Devuelve (img_reducida, escala) o (img,1.0) si no se reduce."""
     if max_side <= 0:
         return img, 1.0
     h, w = img.shape[:2]
@@ -57,16 +52,13 @@ def resize_for_sam(img: np.ndarray, max_side: int):
     return img, 1.0
 
 def best_mask(masks: list[dict], h: int) -> np.ndarray:
-    """Elige la máscara que mejor cubre la franja vertical 30‑90 %."""
+    """Elige la máscara que cubre mejor la franja vertical 30‑90 %."""
     band = slice(int(0.3 * h), int(0.9 * h))
-    def score(m):      # nº de píxeles de la máscara dentro de la banda
-        return m["segmentation"][band, :].sum()
-    candidate = max(masks, key=score)
-    if score(candidate) == 0:
-        candidate = max(masks, key=lambda m: m["area"])
-    return candidate["segmentation"]
+    def score(m): return m["segmentation"][band, :].sum()
+    m_best = max(masks, key=score)
+    return (m_best if score(m_best) else max(masks, key=lambda m: m["area"]))["segmentation"]
 
-# ---------------------------------------------------------------- pipeline ----
+# ---------------------------------------------------------------- pipeline
 for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
     img = cv2.imread(str(img_path))
     if img is None:
@@ -80,18 +72,43 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
         continue
 
     mask_small = best_mask(masks, img_small.shape[0])
+    mask = (cv2.resize(mask_small.astype(np.uint8),
+                       dsize=(img.shape[1], img.shape[0]),
+                       interpolation=cv2.INTER_NEAREST).astype(bool)
+            if scale != 1.0 else mask_small)
+    mask = ~mask                      # 1) ahora 1 = objeto (posible pared/suelo)
 
-    # Re‑escalar la máscara si fue necesario
-    if scale != 1.0:
-        mask = cv2.resize(mask_small.astype(np.uint8),
-                          dsize=(img.shape[1], img.shape[0]),
-                          interpolation=cv2.INTER_NEAREST).astype(bool)
-    else:
-        mask = mask_small
+    # 2) eliminar bandas de pared/suelo pegadas a los bordes
+    H, W = mask.shape
+    mask_u8 = mask.astype(np.uint8)
 
-    # Aplicar máscara (fondo = blanco)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
+
+    cleaned = np.zeros_like(mask_u8)
+    for i in range(1, n):                      # 0 = fondo
+        x, y, w_box, h_box, area = stats[i]
+        y_center = y + h_box * 0.5
+
+        touches_top    = y == 0
+        touches_bottom = y + h_box >= H - 1
+
+        # criterio: banda fina pegada arriba o abajo
+        is_border_band = (
+            (touches_top or touches_bottom) and
+            h_box < 0.20 * H and            # altura < 20 % de imagen
+            w_box > 0.50 * W                # ocupa más de la mitad en horizontal
+        )
+
+        if not is_border_band:
+            cleaned[labels == i] = 1
+
+    # si nos hemos quedado sin nada (caso raro), usar máscara original
+    if cleaned.sum() == 0:
+        cleaned = mask_u8
+
+    mask = cleaned.astype(bool)
     result = img.copy()
-    result[~mask] = 255
+    result[~mask] = 255   
 
     cv2.imwrite(str(OUTPUT_DIR / img_path.name), result)
     print(f"[OK] {img_path.name} → guardado")
