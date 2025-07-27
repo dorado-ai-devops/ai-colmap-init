@@ -61,6 +61,14 @@ RUN pip3 install --upgrade pip && \
 
 RUN pip3 install pillow
 
+#SAM
+RUN pip3 install git+https://github.com/facebookresearch/segment-anything.git \
+    && pip3 install matplotlib tqdm
+
+
+RUN mkdir -p /app/checkpoints && \
+    wget -O /app/checkpoints/sam_vit_b.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+
 WORKDIR /app
 
 COPY fix_relative_img_paths.py .

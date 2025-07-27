@@ -30,7 +30,19 @@ else
     exit 1
 fi
 
-echo "==> Ejecutando pipeline COLMAP paso a paso..."
+echo "==> Aplicando SAM para centrar objetos en las imágenes"
+
+python3 /app/center_with_sam.py \
+  --input "$DATA_PATH/images" \
+  --output "$DATA_PATH/images_centered" \
+  --checkpoint /app/sam_vit_b.pth \
+  --size 768
+
+echo "==> Sustituyendo imágenes originales por centradas"
+rm -rf "$DATA_PATH/images"
+mv "$DATA_PATH/images_centered" "$DATA_PATH/images"
+
+echo "==> Ejecutando pipeline COLMAP"
 
 COLMAP_DIR="$DATA_PATH/colmap"
 SPARSE_DIR="$COLMAP_DIR/sparse"
