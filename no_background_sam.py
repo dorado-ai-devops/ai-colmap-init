@@ -52,7 +52,7 @@ def resize_for_sam(img: np.ndarray, max_side: int):
     return img, 1.0
 
 def best_mask(masks: list[dict], h: int) -> np.ndarray:
-    """Elige la máscara que cubre mejor la franja vertical 30‑90 %."""
+    """Elige la máscara que cubre mejor la franja vertical 30 ‑90 %."""
     band = slice(int(0.3 * h), int(0.9 * h))
     def score(m): return m["segmentation"][band, :].sum()
     m_best = max(masks, key=score)
@@ -92,21 +92,18 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
         touches_left   = x == 0
         touches_right  = x + w_box >= W - 1
 
-        # — reglas de descarte — -------------------------------------------
-        # 1) franja horizontal pegada a borde inferior o superior
+        # reglas de descarte para suelo y pared
         is_horiz_band = (
             (touches_bottom or touches_top) and   # suelo o techo
             h_box < 0.20 * H and                  # franja estrecha
             w_box > 0.50 * W                      # cubre al menos la mitad del ancho
         )
 
-        # 2) pared muy alta pegada arriba
         is_upper_wall = (
             touches_top and
             h_box > 0.25 * H
         )
 
-        # 3) pared completa izquierda‑derecha
         is_full_side_wall = (
             touches_left and touches_right and
             w_box > 0.80 * W
@@ -114,7 +111,6 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
 
         if not (is_horiz_band or is_upper_wall or is_full_side_wall):
             cleaned[labels == i] = 1    # mantenemos componente
-    # ----------------------------------------------------------------------
 
     if cleaned.sum() == 0:              # fallback de seguridad
         cleaned = mask_u8
