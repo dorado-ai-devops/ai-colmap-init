@@ -20,6 +20,8 @@ parser.add_argument("--output",     required=True, help="Carpeta de salida")
 parser.add_argument("--checkpoint", required=True, help="Checkpoint .pth de SAM")
 parser.add_argument("--max-side",   type=int, default=0,
                     help="Máx. lado que verá SAM (0 = sin downscale interno)")
+parser.add_argument("--remove-wall", choices=["heuristic", "depth"], default="heuristic",
+                    help="Modo de eliminación de pared")
 args = parser.parse_args()
 
 INPUT_DIR  = Path(args.input)
@@ -32,15 +34,26 @@ MODEL_TYPE = "vit_b"
 sam        = sam_model_registry[MODEL_TYPE](checkpoint=args.checkpoint).to(device)
 mask_gen   = SamAutomaticMaskGenerator(
     model=sam,
-    points_per_side=64,
+    points_per_side=32,  # optimizado
     pred_iou_thresh=0.9,
     stability_score_thresh=0.95,
     min_mask_region_area=4096,
 )
 
+# ---------------------------------------------------------------- MiDaS
+midas = None
+midas_transform = None
+if args.remove_wall == "depth":
+    from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+    midas = torch.hub.load("intel-isl/MiDaS", "MiDaS_small").to(device).eval()
+    midas_transform = Compose([
+        Resize(192),  # optimizado
+        ToTensor(),
+        Normalize(mean=[0.5], std=[0.5]),
+    ])
+
 # -------------------------------------------------------------- utilidades
 def resize_for_sam(img: np.ndarray, max_side: int):
-    """Devuelve (img_reducida, escala) o (img,1.0) si no se reduce."""
     if max_side <= 0:
         return img, 1.0
     h, w = img.shape[:2]
@@ -52,11 +65,31 @@ def resize_for_sam(img: np.ndarray, max_side: int):
     return img, 1.0
 
 def best_mask(masks: list[dict], h: int) -> np.ndarray:
-    """Elige la máscara que cubre mejor la franja vertical 30 ‑90 %."""
     band = slice(int(0.3 * h), int(0.9 * h))
     def score(m): return m["segmentation"][band, :].sum()
     m_best = max(masks, key=score)
     return (m_best if score(m_best) else max(masks, key=lambda m: m["area"]))["segmentation"]
+
+def estimate_depth(img: np.ndarray) -> np.ndarray:
+    with torch.no_grad():
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        input_tensor = midas_transform(img_rgb).unsqueeze(0).to(device)
+        depth = midas(input_tensor).squeeze().cpu().numpy()
+        depth = cv2.resize(depth, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+        return depth
+
+def mask_from_ransac(depth: np.ndarray, max_error: float = 0.02) -> np.ndarray:
+    h, w = depth.shape
+    ys, xs = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+    pts = np.stack([xs.ravel(), ys.ravel(), depth.ravel()], axis=1)
+    pts = pts[~np.isnan(pts[:, 2])]
+    if pts.shape[0] < 100:
+        return np.zeros_like(depth, dtype=bool)
+    _, inliers = cv2.ransac(pts.astype(np.float32), None, model=cv2.RANSAC, ransacReprojThreshold=max_error)
+    mask = np.zeros((h * w,), dtype=bool)
+    if inliers is not None:
+        mask[inliers[:, 0]] = True
+    return mask.reshape(h, w)
 
 # ---------------------------------------------------------------- pipeline
 for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
@@ -76,48 +109,37 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
                        dsize=(img.shape[1], img.shape[0]),
                        interpolation=cv2.INTER_NEAREST).astype(bool)
             if scale != 1.0 else mask_small)
-    mask = ~mask                       # 1 = objeto principal
+    mask = ~mask
 
-    H, W = mask.shape
-    mask_u8 = mask.astype(np.uint8)
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
+    if args.remove_wall == "depth":
+        depth = estimate_depth(img)
+        wall_mask = mask_from_ransac(depth)
+        mask[wall_mask] = False
 
-    cleaned = np.zeros_like(mask_u8)
+    if args.remove_wall == "heuristic":
+        H, W = mask.shape
+        mask_u8 = mask.astype(np.uint8)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
+        cleaned = np.zeros_like(mask_u8)
+        for i in range(1, n):
+            x, y, w_box, h_box, area = stats[i]
+            touches_top    = y == 0
+            touches_bottom = y + h_box >= H - 1
+            touches_left   = x == 0
+            touches_right  = x + w_box >= W - 1
+            is_horiz_band = (
+                (touches_bottom or touches_top) and h_box < 0.20 * H and w_box > 0.50 * W
+            )
+            is_upper_wall = touches_top and h_box > 0.25 * H
+            is_full_side_wall = touches_left and touches_right and w_box > 0.80 * W
+            if not (is_horiz_band or is_upper_wall or is_full_side_wall):
+                cleaned[labels == i] = 1
+        if cleaned.sum() == 0:
+            cleaned = mask_u8
+        mask = cleaned.astype(bool)
 
-    for i in range(1, n):              # etiqueta 0 = fondo original
-        x, y, w_box, h_box, area = stats[i]
-
-        touches_top    = y == 0
-        touches_bottom = y + h_box >= H - 1
-        touches_left   = x == 0
-        touches_right  = x + w_box >= W - 1
-
-        # reglas de descarte para suelo y pared
-        is_horiz_band = (
-            (touches_bottom or touches_top) and   # suelo o techo
-            h_box < 0.20 * H and                  # franja estrecha
-            w_box > 0.50 * W                      # cubre al menos la mitad del ancho
-        )
-
-        is_upper_wall = (
-            touches_top and
-            h_box > 0.25 * H
-        )
-
-        is_full_side_wall = (
-            touches_left and touches_right and
-            w_box > 0.80 * W
-        )
-
-        if not (is_horiz_band or is_upper_wall or is_full_side_wall):
-            cleaned[labels == i] = 1    # mantenemos componente
-
-    if cleaned.sum() == 0:              # fallback de seguridad
-        cleaned = mask_u8
-
-    mask = cleaned.astype(bool)
     result = img.copy()
-    result[~mask] = 255                 # blanquea fondo
+    result[~mask] = 255
 
     cv2.imwrite(str(OUTPUT_DIR / img_path.name), result)
     print(f"[OK] {img_path.name} → guardado")
