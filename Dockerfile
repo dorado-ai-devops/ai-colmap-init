@@ -68,8 +68,8 @@ RUN python3 -m venv /venv_sr && \
     /venv_sr/bin/pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
         torch==2.2.0+cu121 torchvision==0.17.0+cu121 einops && \
     /venv_sr/bin/pip install "numpy<2" pillow tqdm opencv-python matplotlib && \
+    /venv_sr/bin/pip install scikit-learn && \
     /venv_sr/bin/pip install git+https://github.com/facebookresearch/segment-anything.git
-
 RUN mkdir -p /app/checkpoints && \
     wget -O /app/checkpoints/sam_vit_b.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
 

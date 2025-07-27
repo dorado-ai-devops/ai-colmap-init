@@ -1,150 +1,166 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env python3
+# --------------------------------------------------------- no_background_sam.py
+# Aísla el objeto principal y blanquea el fondo.
+# Entrada y salida mantienen la resolución original.
+# ------------------------------------------------------------------------------
 
-############################################################
-# Mandatory environment variables                          #
-############################################################
-: "${DATA_PATH:?Environment variable DATA_PATH is not set}"
-: "${DATASET_NAME:?Environment variable DATASET_NAME is not set}"
-: "${GH_KEY:?Environment variable GH_KEY is not set}"
-: "${IMG_COPY_MODE:?Environment variable IMG_COPY_MODE is not set}"
-: "${IMG_TYPE:?Environment variable IMG_TYPE is not set}"
+import argparse
+from pathlib import Path
+import time
+import logging
 
-# Optional: FAST=1|true to skip downscale
-FAST=${FAST:-0}
+import cv2
+import numpy as np
+import torch
+from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
+from tqdm import tqdm
+from sklearn.linear_model import RANSACRegressor
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.pipeline import make_pipeline
+from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 
-############################################################
-# Logging helpers                                          #
-############################################################
-log()  { local tag="$1"; shift; printf '[%s] %s\n' "$tag" "$*"; }
-loge() { local tag="$1"; shift; printf '[%s][ERROR] %s\n' "$tag" "$*" >&2; }
-die()  { loge "GENERAL" "$*"; exit 1; }
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
 
-# Trap unexpected aborts
-_dbg_trap() { loge "GENERAL" "Aborted at line $LINENO"; }
-trap _dbg_trap ERR
+# ------------------------------------------------------------------ argumentos
+parser = argparse.ArgumentParser(description="Quita fondo con SAM")
+parser.add_argument("--input",      required=True, help="Carpeta con imágenes")
+parser.add_argument("--output",     required=True, help="Carpeta de salida")
+parser.add_argument("--checkpoint", required=True, help="Checkpoint .pth de SAM")
+parser.add_argument("--max-side",   type=int, default=0,
+                    help="Máx. lado que verá SAM (0 = sin downscale interno)")
+parser.add_argument("--remove-wall", choices=["heuristic", "depth"], default="heuristic",
+                    help="Modo de eliminación de pared")
+args = parser.parse_args()
 
-############################################################
-# Directory helpers                                        #
-############################################################
-ensure_dir() { mkdir -p "$1"; }
+INPUT_DIR  = Path(args.input)
+OUTPUT_DIR = Path(args.output)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-prepare_dirs() {
-  ensure_dir /root/.ssh
-  ensure_dir "$DATA_PATH/images"
-  ensure_dir "$DATA_PATH/images_no_bg"
-  ensure_dir "$DATA_PATH/colmap/sparse/0_text"
-}
+# ---------------------------------------------------------------- modelo SAM
+device     = "cuda" if torch.cuda.is_available() else "cpu"
+MODEL_TYPE = "vit_b"
+sam        = sam_model_registry[MODEL_TYPE](checkpoint=args.checkpoint).to(device)
+mask_gen   = SamAutomaticMaskGenerator(
+    model=sam,
+    points_per_side=32,
+    pred_iou_thresh=0.9,
+    stability_score_thresh=0.95,
+    min_mask_region_area=4096,
+)
 
-############################################################
-# Pipeline start                                           #
-############################################################
-prepare_dirs
+# ---------------------------------------------------------------- MiDaS (si es necesario)
+midas = None
+midas_transform = None
+if args.remove_wall == "depth":
+    midas = torch.hub.load("intel-isl/MiDaS", "MiDaS_small").to(device).eval()
+    midas_transform = Compose([
+        Resize(192),
+        ToTensor(),
+        Normalize(mean=[0.5], std=[0.5]),
+    ])
 
-log "SSH" "Configuring SSH access"
-echo "$GH_KEY" > /root/.ssh/id_rsa
-chmod 600 /root/.ssh/id_rsa
-ssh-keyscan github.com >> /root/.ssh/known_hosts
+# -------------------------------------------------------------- utilidades
+def resize_half(img: np.ndarray):
+    return cv2.resize(img, dsize=None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
 
-log "DATASET" "Cloning dataset ${DATASET_NAME}"
-git clone --depth 1 git@github.com:dorado-ai-devops/ai-nerf-datasets.git /tmp/tmp_cloned
+def resize_for_sam(img: np.ndarray, max_side: int):
+    if max_side <= 0:
+        return img, 1.0
+    h, w = img.shape[:2]
+    scale = max_side / max(h, w)
+    if scale < 1.0:
+        img_small = cv2.resize(img, dsize=None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        return img_small, scale
+    return img, 1.0
 
-log "DATASET" "Copying images to $DATA_PATH/images"
-case "$IMG_COPY_MODE" in
-  TOTAL)
-    cp /tmp/tmp_cloned/${DATASET_NAME}/images/*.${IMG_TYPE} "$DATA_PATH/images" ;;
-  ''|*[!0-9]*)
-    die "IMG_COPY_MODE must be 'TOTAL' or an integer" ;;
-  *)
-    for i in $(seq 0 $((IMG_COPY_MODE - 1))); do
-      cp "/tmp/tmp_cloned/${DATASET_NAME}/images/r_${i}.${IMG_TYPE}" "$DATA_PATH/images"
-    done ;;
-esac
+def best_mask(masks: list[dict], h: int) -> np.ndarray:
+    band = slice(int(0.3 * h), int(0.9 * h))
+    def score(m): return m["segmentation"][band, :].sum()
+    m_best = max(masks, key=score)
+    return (m_best if score(m_best) else max(masks, key=lambda m: m["area"]))["segmentation"]
 
-############################################################
-# SAM                                                       #
-############################################################
-log "SAM" "Removing backgrounds"
-/venv_sr/bin/python3 /app/no_background_sam.py \
-  --input      "$DATA_PATH/images" \
-  --output     "$DATA_PATH/images_no_bg" \
-  --checkpoint /app/checkpoints/sam_vit_b.pth \
-  --max-side   0    
+def estimate_depth(img: np.ndarray) -> np.ndarray:
+    with torch.no_grad():
+        img_half = resize_half(img)
+        img_rgb = cv2.cvtColor(img_half, cv2.COLOR_BGR2RGB)
+        input_tensor = midas_transform(img_rgb).unsqueeze(0).to(device)
+        depth = midas(input_tensor).squeeze().cpu().numpy()
+        depth = cv2.resize(depth, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+        return depth
 
-rm -rf "$DATA_PATH/images"
-mv "$DATA_PATH/images_no_bg" "$DATA_PATH/images"
-log "SAM" "Original images replaced"
+def mask_from_ransac(depth: np.ndarray, max_error: float = 0.03) -> np.ndarray:
+    h, w = depth.shape
+    ys, xs = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+    X = np.stack([xs.ravel(), ys.ravel()], axis=1)
+    Z = depth.ravel()
+    valid = ~np.isnan(Z)
+    X = X[valid]
+    Z = Z[valid]
 
-############################################################
-# COLMAP                                                   #
-############################################################
-COLMAP_DIR="$DATA_PATH/colmap"
-SPARSE_DIR="$COLMAP_DIR/sparse"
-TEXT_DIR="$SPARSE_DIR/0_text"
-DB_PATH="$COLMAP_DIR/database.db"
-TRANSFORMS_PATH="$DATA_PATH/transforms.json"
+    model = make_pipeline(PolynomialFeatures(degree=1), RANSACRegressor(residual_threshold=max_error))
+    model.fit(X, Z)
+    Z_pred = model.predict(X)
+    residuals = np.abs(Z - Z_pred)
+    inliers = residuals < max_error
 
-rm -rf "$COLMAP_DIR" "$TRANSFORMS_PATH"
-ensure_dir "$TEXT_DIR"
+    mask = np.zeros(h * w, dtype=bool)
+    mask[np.flatnonzero(valid)[inliers]] = True
+    return mask.reshape(h, w)
 
-log "COLMAP" "Extracting features"
-colmap feature_extractor \
-  --database_path "$DB_PATH" \
-  --image_path "$DATA_PATH/images" \
-  --ImageReader.single_camera 1 \
-  --ImageReader.camera_model OPENCV \
-  --SiftExtraction.use_gpu 1
+# ---------------------------------------------------------------- pipeline
+for img_path in sorted(INPUT_DIR.glob("*.[jp][pn]g")):
+    start_time = time.time()
+    img = cv2.imread(str(img_path))
+    if img is None:
+        logging.warning(f"No se pudo leer {img_path.name}")
+        continue
 
-log "COLMAP" "Performing exhaustive matcher"
-colmap exhaustive_matcher --database_path "$DB_PATH"
+    img_small, scale = resize_for_sam(img, args.max_side)
+    masks = mask_gen.generate(img_small)
+    if not masks:
+        logging.warning(f"Sin máscara para {img_path.name}")
+        continue
 
-log "COLMAP" "Reconstructing model (mapper)"
-colmap mapper \
-  --database_path "$DB_PATH" \
-  --image_path "$DATA_PATH/images" \
-  --output_path "$SPARSE_DIR" \
-  --Mapper.ba_global_max_refinements 10 \
-  --Mapper.min_num_matches 3 \
-  --Mapper.init_min_tri_angle 0.5 \
-  --Mapper.abs_pose_min_num_inliers 10 \
-  --Mapper.filter_max_reproj_error 5
+    mask_small = best_mask(masks, img_small.shape[0])
+    mask = (cv2.resize(mask_small.astype(np.uint8),
+                       dsize=(img.shape[1], img.shape[0]),
+                       interpolation=cv2.INTER_NEAREST).astype(bool)
+            if scale != 1.0 else mask_small)
+    mask = ~mask
 
-log "COLMAP" "Converting model to TXT"
-colmap model_converter \
-  --input_path "$SPARSE_DIR/0" \
-  --output_path "$TEXT_DIR" \
-  --output_type TXT
+    if args.remove_wall == "depth":
+        depth = estimate_depth(img)
+        wall_mask = mask_from_ransac(depth)
+        mask[wall_mask] = False
 
-log "COLMAP" "Generating transforms.json"
-python3 /colmap/scripts/python/colmap2nerf.py \
-  --images "$DATA_PATH/images" \
-  --text "$TEXT_DIR" \
-  --colmap_db "$DB_PATH" \
-  --out "$TRANSFORMS_PATH" \
-  --colmap_camera_model OPENCV \
-  > "$DATA_PATH/colmap2nerf_stdout.log" \
-  2> "$DATA_PATH/colmap2nerf_stderr.log"
+    if args.remove_wall == "heuristic":
+        H, W = mask.shape
+        mask_u8 = mask.astype(np.uint8)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
+        cleaned = np.zeros_like(mask_u8)
+        for i in range(1, n):
+            x, y, w_box, h_box, area = stats[i]
+            touches_top    = y == 0
+            touches_bottom = y + h_box >= H - 1
+            touches_left   = x == 0
+            touches_right  = x + w_box >= W - 1
+            is_horiz_band = (
+                (touches_bottom or touches_top) and h_box < 0.20 * H and w_box > 0.50 * W
+            )
+            is_upper_wall = touches_top and h_box > 0.25 * H
+            is_full_side_wall = touches_left and touches_right and w_box > 0.80 * W
+            if not (is_horiz_band or is_upper_wall or is_full_side_wall):
+                cleaned[labels == i] = 1
+        if cleaned.sum() == 0:
+            cleaned = mask_u8
+        mask = cleaned.astype(bool)
 
-[[ -f "$TRANSFORMS_PATH" ]] || die "transforms.json was not generated"
+    result = img.copy()
+    result[~mask] = 255
 
-log "COLMAP" "transforms.json generated successfully"
-head -n 20 "$TRANSFORMS_PATH"
-cp "$TRANSFORMS_PATH" "$DATA_PATH/transforms.json_backup"
-
-############################################################
-# Fix relative paths                                       #
-############################################################
-log "FIX" "Adjusting relative paths inside transforms.json"
-python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
-
-############################################################
-# DOWNSCALE (conditional) & SUMMARY                       #
-############################################################
-if [[ "${FAST}" =~ ^(1|true|TRUE)$ ]]; then
-  log "DOWNSCALE" "Downscaling images by factor 2"
-  python3 /app/downscale.py "$DATA_PATH" 2
-  log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (downscaled)"
-else
-  log "DOWNSCALE" "Skipped (FAST=${FAST})"
-  log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (original resolution)"
-fi
+    cv2.imwrite(str(OUTPUT_DIR / img_path.name), result)
+    elapsed = time.time() - start_time
+    logging.info(f"{img_path.name} procesada en {elapsed:.2f}s")
