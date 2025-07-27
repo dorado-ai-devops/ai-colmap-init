@@ -36,15 +36,13 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 device     = "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_TYPE = "vit_b"
 sam        = sam_model_registry[MODEL_TYPE](checkpoint=args.checkpoint).to(device)
-# Pass generador rápido para segunda pasada
-mask_gen   = SamAutomaticMaskGenerator(model=sam, points_per_side=32,
-                                       pred_iou_thresh=0.9,
-                                       stability_score_thresh=0.95,
-                                       min_mask_region_area=4096)
-mask_gen_rot = SamAutomaticMaskGenerator(model=sam, points_per_side=16,
-                                         pred_iou_thresh=0.95,
-                                         stability_score_thresh=0.95,
-                                         min_mask_region_area=4096)
+mask_gen   = SamAutomaticMaskGenerator(
+    model=sam,
+    points_per_side=32,
+    pred_iou_thresh=0.9,
+    stability_score_thresh=0.95,
+    min_mask_region_area=4096
+)
 
 # -------------------------------------------------------------- utilidades
 def resize_for_sam(img: np.ndarray, max_side: int):
@@ -53,8 +51,7 @@ def resize_for_sam(img: np.ndarray, max_side: int):
     h, w = img.shape[:2]
     scale = max_side / max(h, w)
     if scale < 1.0:
-        img_small = cv2.resize(img, None, fx=scale, fy=scale,
-                               interpolation=cv2.INTER_AREA)
+        img_small = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
         return img_small, scale
     return img, 1.0
 
@@ -62,8 +59,7 @@ def resize_for_sam(img: np.ndarray, max_side: int):
 def best_mask(masks: list[dict], h: int) -> np.ndarray:
     """Elige la máscara que mejor cubre la banda vertical media"""
     band = slice(int(0.3 * h), int(0.9 * h))
-    m_best = max(masks, key=lambda m: m["segmentation"][band, :].sum())
-    return m_best["segmentation"]
+    return max(masks, key=lambda m: m["segmentation"][band, :].sum())["segmentation"]
 
 # ---------------------------------------------------------------- pipeline
 for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
@@ -85,52 +81,41 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
             if scale != 1.0 else m_s)
     mask = ~mask
 
+    # Morfología inicial: closing + opening para suavizar
+    # Kernel dinámico según resolución (1% de la altura, mínimo 3px)
+    k = max(3, int(0.01 * H))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel).astype(bool)
+
     # Heurística: eliminar bandas planas en bordes
     H, W = mask.shape
-    stats_mask = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
-    _, labels, stats, _ = stats_mask
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    if areas.size:
+        # umbral dinámico: percentil 5% de áreas
+        thresh_area = np.percentile(areas, 5)
+    else:
+        thresh_area = 0
     clean = np.zeros_like(mask, dtype=np.uint8)
     for i in range(1, stats.shape[0]):
-        x, y, w_box, h_box, _ = stats[i]
+        x, y, w_box, h_box, area = stats[i]
         top = (y == 0); bot = (y + h_box >= H)
         left = (x == 0); right = (x + w_box >= W)
         floor = bot and h_box < 0.2 * H and w_box > 0.5 * W
         wallU = top and h_box > 0.25 * H
         wallLR = left and right and w_box > 0.8 * W
-        if not (floor or wallU or wallLR):
+        # descartar si área < umbral dinámico o cumple floor/wall
+        if not (area < thresh_area or floor or wallU or wallLR):
             clean[labels == i] = 1
     mask = clean.astype(bool) if clean.sum() else mask
 
-    # --- PASADA 2: Flip trick para pared como suelo ---
-    rot = cv2.rotate(img, cv2.ROTATE_180)
-    rot_s, sc2 = resize_for_sam(rot, args.max_side)
-    masks_r = mask_gen_rot.generate(rot_s)
-    if masks_r:
-        rb = best_mask(masks_r, rot_s.shape[0])
-        mask_r = (cv2.resize(rb.astype(np.uint8), (rot.shape[1], rot.shape[0]),
-                              interpolation=cv2.INTER_NEAREST).astype(bool)
-                  if sc2 != 1.0 else rb)
-        mask_r = ~mask_r
-        # heurística suelo en rotada
-        Hf, Wf = mask_r.shape
-        stats_r = cv2.connectedComponentsWithStats(mask_r.astype(np.uint8), 8)
-        _, labf, stf, _ = stats_r
-        cf = np.zeros_like(mask_r, dtype=np.uint8)
-        for j in range(1, stf.shape[0]):
-            x0, y0, w0, h0, _ = stf[j]
-            floor_r = (y0 + h0 >= Hf) and (h0 < 0.2 * Hf) and (w0 > 0.5 * Wf)
-            if not floor_r:
-                cf[labf == j] = 1
-        back = cv2.rotate(cf, cv2.ROTATE_180).astype(bool)
-        mask &= back
-
-    # --- Rellenar pequeños agujeros internos ---
+    # --- Rellenar pequeños agujeros internos (ruido) ---
     inv = (~mask).astype(np.uint8)
-    stats_hole = cv2.connectedComponentsWithStats(inv, 8)
-    _, lab_h, st_h, _ = stats_hole
+    _, lab_h, st_h, _ = cv2.connectedComponentsWithStats(inv, 8)
     for k in range(1, st_h.shape[0]):
         area = st_h[k, cv2.CC_STAT_AREA]
-        if area < 0.005 * H * W:
+        if area < thresh_area:
             inv[lab_h == k] = 0
     mask = ~inv.astype(bool)
 
