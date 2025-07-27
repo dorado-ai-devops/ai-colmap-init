@@ -62,29 +62,18 @@ case "$IMG_COPY_MODE" in
 esac
 
 ############################################################
-# DOWNSCALE (conditional) & SUMMARY                       #
-############################################################
-  log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (original_resolution)"
-  log "DOWNSCALE" "Starting downscale process"
-  python3 /app/downscale.py "$DATA_PATH" 2
-  log "SUMMARY" "Dataset downscaled  at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (downscaled)"
-
-
-
-############################################################
-# SAM                                                      #
+# SAM                                                       #
 ############################################################
 log "SAM" "Removing backgrounds"
 /venv_sr/bin/python3 /app/no_background_sam.py \
   --input      "$DATA_PATH/images" \
   --output     "$DATA_PATH/images_no_bg" \
   --checkpoint /app/checkpoints/sam_vit_b.pth \
-  --max-side   0
+  --max-side   0    
 
 rm -rf "$DATA_PATH/images"
 mv "$DATA_PATH/images_no_bg" "$DATA_PATH/images"
-log "SAM" "Original images replaced with no-background"
-log "SUMMARY" "No-background images at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (no_background)"
+log "SAM" "Original images replaced"
 
 ############################################################
 # COLMAP                                                   #
@@ -148,4 +137,14 @@ cp "$TRANSFORMS_PATH" "$DATA_PATH/transforms.json_backup"
 log "FIX" "Adjusting relative paths inside transforms.json"
 python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
 
-
+############################################################
+# DOWNSCALE (conditional) & SUMMARY                       #
+############################################################
+if [[ "${FAST}" =~ ^(1|true|TRUE)$ ]]; then
+  log "DOWNSCALE" "Downscaling images by factor 2"
+  python3 /app/downscale.py "$DATA_PATH" 2
+  log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (downscaled)"
+else
+  log "DOWNSCALE" "Skipped (FAST=${FAST})"
+  log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (original resolution)"
+fi
