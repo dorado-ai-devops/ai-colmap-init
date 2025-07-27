@@ -8,7 +8,7 @@ import argparse
 from pathlib import Path
 import time
 import logging
-
+from PIL import Image
 import cv2
 import numpy as np
 import torch
@@ -78,13 +78,16 @@ def best_mask(masks: list[dict], h: int) -> np.ndarray:
     return (m_best if score(m_best) else max(masks, key=lambda m: m["area"]))["segmentation"]
 
 def estimate_depth(img: np.ndarray) -> np.ndarray:
+    """Devuelve mapa de profundidad del mismo tamaño que la imagen."""
     with torch.no_grad():
         img_half = resize_half(img)
         img_rgb = cv2.cvtColor(img_half, cv2.COLOR_BGR2RGB)
-        input_tensor = midas_transform(img_rgb).unsqueeze(0).to(device)
-        depth = midas(input_tensor).squeeze().cpu().numpy()
-        depth = cv2.resize(depth, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+        pil = Image.fromarray(img_rgb)
+        input_tensor = midas_transform(pil).unsqueeze(0).to(device)
+        depth_small = midas(input_tensor).squeeze().cpu().numpy()
+        depth = cv2.resize(depth_small, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
         return depth
+
 
 def mask_from_ransac(depth: np.ndarray, max_error: float = 0.03) -> np.ndarray:
     h, w = depth.shape
