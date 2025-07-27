@@ -76,34 +76,43 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g"))):
                        dsize=(img.shape[1], img.shape[0]),
                        interpolation=cv2.INTER_NEAREST).astype(bool)
             if scale != 1.0 else mask_small)
-    mask = ~mask                      # 1) ahora 1 = objeto (posible pared/suelo)
+    mask = ~mask                       # 1) ahora 1 = objetos
 
-    # 2) eliminar bandas de pared/suelo pegadas a los bordes
     H, W = mask.shape
     mask_u8 = mask.astype(np.uint8)
-
     n, labels, stats, _ = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
 
     cleaned = np.zeros_like(mask_u8)
-    for i in range(1, n):                      # 0 = fondo
+
+    for i in range(1, n):              # etiqueta 0 = fondo original
         x, y, w_box, h_box, area = stats[i]
-        y_center = y + h_box * 0.5
 
         touches_top    = y == 0
         touches_bottom = y + h_box >= H - 1
+        touches_left   = x == 0
+        touches_right  = x + w_box >= W - 1
 
-        # criterio: banda fina pegada arriba o abajo
-        is_border_band = (
-            (touches_top or touches_bottom) and
-            h_box < 0.20 * H and            # altura < 20 % de imagen
-            w_box > 0.50 * W                # ocupa más de la mitad en horizontal
+        # — reglas de descarte —
+        is_floor_band = (
+            touches_bottom and
+            h_box < 0.20 * H and
+            w_box > 0.50 * W
         )
 
-        if not is_border_band:
-            cleaned[labels == i] = 1
+        is_upper_wall = (
+            touches_top and
+            h_box > 0.25 * H            # pared alta
+        )
 
-    # si nos hemos quedado sin nada (caso raro), usar máscara original
-    if cleaned.sum() == 0:
+        is_full_side_wall = (
+            touches_left and touches_right and
+            w_box > 0.80 * W
+        )
+
+        if not (is_floor_band or is_upper_wall or is_full_side_wall):
+            cleaned[labels == i] = 1    # mantenemos componente
+
+    if cleaned.sum() == 0:              # fallback de seguridad
         cleaned = mask_u8
 
     mask = cleaned.astype(bool)
