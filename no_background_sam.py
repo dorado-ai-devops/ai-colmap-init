@@ -81,19 +81,20 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
             if scale != 1.0 else m_s)
     mask = ~mask
 
-    # Dimensiones para heurísticas y morfología
-    H, W = mask.shape
-
     # Morfología inicial: closing + opening para suavizar
-    k = max(3, int(0.01 * H))  # 1% de la altura
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel).astype(bool)
 
-    # Heurística: eliminar bandas planas en bordes con umbral dinámico
+    # Heurística: eliminar bandas planas en bordes
+    H, W = mask.shape
     _, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
     areas = stats[1:, cv2.CC_STAT_AREA]
-    thresh_area = float(np.percentile(areas, 5)) if areas.size else 0.0
+    if areas.size:
+        # umbral dinámico: percentil 5% de áreas
+        thresh_area = np.percentile(areas, 5)
+    else:
+        thresh_area = 0
     clean = np.zeros_like(mask, dtype=np.uint8)
     for i in range(1, stats.shape[0]):
         x, y, w_box, h_box, area = stats[i]
@@ -102,6 +103,7 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
         floor = bot and h_box < 0.2 * H and w_box > 0.5 * W
         wallU = top and h_box > 0.25 * H
         wallLR = left and right and w_box > 0.8 * W
+        # descartar si área < umbral dinámico o cumple floor/wall
         if not (area < thresh_area or floor or wallU or wallLR):
             clean[labels == i] = 1
     mask = clean.astype(bool) if clean.sum() else mask
@@ -110,7 +112,8 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
     inv = (~mask).astype(np.uint8)
     _, lab_h, st_h, _ = cv2.connectedComponentsWithStats(inv, 8)
     for k in range(1, st_h.shape[0]):
-        if st_h[k, cv2.CC_STAT_AREA] < thresh_area:
+        area = st_h[k, cv2.CC_STAT_AREA]
+        if area < thresh_area:
             inv[lab_h == k] = 0
     mask = ~inv.astype(bool)
 
