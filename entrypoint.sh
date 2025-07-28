@@ -56,7 +56,7 @@ case "$IMG_COPY_MODE" in
   ''|*[!0-9]*)
     die "IMG_COPY_MODE must be 'TOTAL' or an integer" ;;
   *)
-    for i in $(seq 0 $((IMG_COPY_MODE - 1))); do
+    for i in $(seq 1 $((IMG_COPY_MODE))); do
       cp "/tmp/tmp_cloned/${DATASET_NAME}/images/r_${i}.${IMG_TYPE}" "$DATA_PATH/images"
     done ;;
 esac
@@ -70,14 +70,41 @@ if [[ "${SAM}" =~ ^(1|true|TRUE)$ ]]; then
     --input      "$DATA_PATH/images" \
     --output     "$DATA_PATH/images_no_bg" \
     --checkpoint /app/checkpoints/sam_vit_b.pth \
-    --max-side   2048 
+    --max-side   2048
 
   rm -rf "$DATA_PATH/images"
   mv "$DATA_PATH/images_no_bg" "$DATA_PATH/images"
   log "SAM" "Original images replaced"
 else
-  log "SAM" "Skipped (SAM=${SAM}) at values"
+  log "SAM" "Skipped (SAM=${SAM})"
 fi
+
+############################################################
+# AUGMENTATION                                              #
+############################################################
+log "AUGMENT" "Generating synthetic augmentations"
+(
+  cd "$DATA_PATH"
+  
+  python3 /app/augment_dataset.py
+
+
+  max_index=$(ls images/r_*.${IMG_TYPE} 2>/dev/null \
+    | sed -E 's/.*r_([0-9]+)\..*/\1/' \
+    | sort -n \
+    | tail -n1)
+  max_index=${max_index:-0}
+
+  
+  for file in aug_classic/*.jpg; do
+    max_index=$((max_index + 1))
+    mv "$file" "images/r_${max_index}.${IMG_TYPE}"
+  done
+
+  
+  rm -rf aug_classic
+)
+
 ############################################################
 # COLMAP                                                   #
 ############################################################
@@ -148,6 +175,6 @@ if [[ "${FAST}" =~ ^(1|true|TRUE)$ ]]; then
   python3 /app/downscale.py "$DATA_PATH" 2
   log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (downscaled)"
 else
-  log "DOWNSCALE" "Skipped (FAST=${FAST}) at values"
+  log "DOWNSCALE" "Skipped (FAST=${FAST})"
   log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (original resolution)"
 fi
