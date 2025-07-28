@@ -62,6 +62,8 @@ RUN pip3 install --upgrade pip && \
 
 RUN pip3 install pillow
 
+RUN pip3 install albumentations
+
 #SAM & TORCH venv cause numpy<2.0
 RUN python3 -m venv /venv_sr && \
     /venv_sr/bin/pip install --upgrade pip && \

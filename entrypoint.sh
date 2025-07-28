@@ -84,11 +84,17 @@ fi
 # AUGMENTATION                                              #
 ############################################################
 log "AUGMENT" "Generating synthetic augmentations"
+
 (
-  cd "$DATA_PATH"
-  
+  cd "$DATA_PATH" || die "No se pudo acceder a $DATA_PATH"
+
   python3 /app/augment_dataset.py
 
+  # Comprobamos si hay imágenes generadas
+  if ! compgen -G "aug_classic/*.jpg" > /dev/null; then
+    loge "AUGMENT" "No augmented images found in aug_classic"
+    exit 1
+  fi
 
   max_index=$(ls images/r_*.${IMG_TYPE} 2>/dev/null \
     | sed -E 's/.*r_([0-9]+)\..*/\1/' \
@@ -96,7 +102,6 @@ log "AUGMENT" "Generating synthetic augmentations"
     | tail -n1)
   max_index=${max_index:-0}
 
-  
   for file in aug_classic/*.jpg; do
     max_index=$((max_index + 1))
     mv "$file" "images/r_${max_index}.${IMG_TYPE}"
