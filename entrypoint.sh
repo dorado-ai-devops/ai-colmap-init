@@ -34,6 +34,7 @@ prepare_dirs() {
   ensure_dir "$DATA_PATH/images"
   ensure_dir "$DATA_PATH/images_no_bg"
   ensure_dir "$DATA_PATH/colmap/sparse/0_text"
+  ensure_dir "$DATA_PATH/aug_classic"
 }
 
 ############################################################
