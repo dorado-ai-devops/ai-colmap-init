@@ -1,5 +1,5 @@
 IMAGE_NAME     := colmap-init
-VERSION        := v1.0.5
+VERSION        := v1.0.6
 REGISTRY       := localhost:5000
 HELM_VALUES    := ../devops-ai-lab/manifests/helm-instant-ngp/values.yaml
 
@@ -33,3 +33,15 @@ run:
 		-e DATA_PATH=/data/lego-ds \
 		-e GH_KEY="xxx" \
 		$(IMAGE_NAME):$(VERSION)
+
+make-public:
+	@echo "🔓 Haciendo público el paquete en GHCR..."
+	curl -sSL -X PATCH https://api.github.com/user/packages/container/$(IMAGE_NAME)/visibility \
+		-H "Accept: application/vnd.github+json" \
+		-H "Authorization: Bearer $(GITHUB_TOKEN)" \
+		-H "X-GitHub-Api-Version: 2022-11-28" \
+		-d '{"visibility":"public"}' | jq '.visibility'
+	@echo "✅ Paquete $(IMAGE_NAME) ahora es público en GHCR."
+
+push-public-release: push make-public update-values
+	@echo "🚀 Imagen publicada públicamente y valores de Helm actualizados."
