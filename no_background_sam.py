@@ -74,7 +74,6 @@ def best_mask(masks: list[dict], h: int) -> np.ndarray:
     )
     return m_best["segmentation"]
 
-
 # ---------------------------------------------------------------- pipeline
 for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
     start_time = time.time()
@@ -135,10 +134,13 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
         )
         rm2 = ~rm2
         Hf, Wf = rm2.shape
-        lu8, labf, stf, _ = cv2.connectedComponentsWithStats(rm2.astype(np.uint8), 8)
-        cf = np.zeros_like(lu8)
-        for j in range(1, labf.max()+1):
-            x0, y0, w0, h0, _ = stf[j]
+        num_labels, labf, stats_f, _ = cv2.connectedComponentsWithStats(
+            rm2.astype(np.uint8), 8
+        )
+
+        cf = np.zeros_like(labf, dtype=np.uint8)
+        for j in range(1, num_labels):
+            x0, y0, w0, h0, _ = stats_f[j]
             if not (y0 + h0 >= Hf and h0 < 0.2 * Hf and w0 > 0.5 * Wf):
                 cf[labf == j] = 1
         back = cv2.rotate(cf.astype(np.uint8), cv2.ROTATE_180).astype(bool)
@@ -154,7 +156,7 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
         x0p, x1p = max(0, x0-pad), min(img.shape[1], x1+pad)
         crop_img  = img[y0p:y1p, x0p:x1p]
         predictor.set_image(crop_img)
-        # prompt: toda la caja
+
         input_box = np.array([[0, 0, crop_img.shape[1], crop_img.shape[0]]])
         masks_pred, scores, _ = predictor.predict(
             box=input_box,
@@ -163,7 +165,6 @@ for img_path in tqdm(sorted(INPUT_DIR.glob("*.[jp][pn]g")), desc="Procesando"):
         refined = masks_pred[0]
         mask[y0p:y1p, x0p:x1p] = refined
 
-    # --- Salida final ---
     out = img.copy()
     out[~mask] = 255
     cv2.imwrite(str(OUTPUT_DIR / img_path.name), out)
