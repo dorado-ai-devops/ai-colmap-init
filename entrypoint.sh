@@ -101,7 +101,7 @@ log "AUGMENT" "Generating synthetic augmentations"
     mv "$file" "images/r_${max_index}.${IMG_TYPE}"
   done
 
-  
+  # Clean up augmentation folder
   rm -rf aug_classic
 )
 
