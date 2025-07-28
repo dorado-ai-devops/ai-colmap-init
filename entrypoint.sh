@@ -69,7 +69,7 @@ log "SAM" "Removing backgrounds"
   --input      "$DATA_PATH/images" \
   --output     "$DATA_PATH/images_no_bg" \
   --checkpoint /app/checkpoints/sam_vit_b.pth \
-  --max-side   0 
+  --max-side   2048 
 
 rm -rf "$DATA_PATH/images"
 mv "$DATA_PATH/images_no_bg" "$DATA_PATH/images"
