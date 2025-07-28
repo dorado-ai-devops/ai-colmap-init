@@ -79,14 +79,6 @@ else
   log "SAM" "Skipped (SAM=${SAM})"
 fi
 
-############################################################
-# AUGMENTATION                                              #
-############################################################
-log "AUGMENT" "Generating synthetic augmentations"
-(
-  cd "$DATA_PATH" || die "No se pudo acceder a $DATA_PATH"
-  python3 /app/augment_dataset.py
-)
 
 ############################################################
 # COLMAP                                                   #
