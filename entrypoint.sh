@@ -9,7 +9,7 @@ set -euo pipefail
 : "${GH_KEY:?Environment variable GH_KEY is not set}"
 : "${IMG_COPY_MODE:?Environment variable IMG_COPY_MODE is not set}"
 : "${IMG_TYPE:?Environment variable IMG_TYPE is not set}"
-
+: "${SAM:?Environment variable SAM is not set}"
 # Optional: FAST=1|true to skip downscale
 FAST=${FAST:-0}
 
@@ -61,20 +61,23 @@ case "$IMG_COPY_MODE" in
     done ;;
 esac
 
-############################################################
-# SAM                                                       #
-############################################################
-log "SAM" "Removing backgrounds"
-/venv_sr/bin/python3 /app/no_background_sam.py \
-  --input      "$DATA_PATH/images" \
-  --output     "$DATA_PATH/images_no_bg" \
-  --checkpoint /app/checkpoints/sam_vit_b.pth \
-  --max-side   2048 
+if [[ "${SAM}" =~ ^(1|true|TRUE)$ ]]; then
+  ############################################################
+  # SAM                                                       #
+  ############################################################
+  log "SAM" "Removing backgrounds"
+  /venv_sr/bin/python3 /app/no_background_sam.py \
+    --input      "$DATA_PATH/images" \
+    --output     "$DATA_PATH/images_no_bg" \
+    --checkpoint /app/checkpoints/sam_vit_b.pth \
+    --max-side   2048 
 
-rm -rf "$DATA_PATH/images"
-mv "$DATA_PATH/images_no_bg" "$DATA_PATH/images"
-log "SAM" "Original images replaced"
-
+  rm -rf "$DATA_PATH/images"
+  mv "$DATA_PATH/images_no_bg" "$DATA_PATH/images"
+  log "SAM" "Original images replaced"
+else
+  log "SAM" "Skipped (SAM=${SAM}) at values"
+fi
 ############################################################
 # COLMAP                                                   #
 ############################################################
@@ -145,6 +148,6 @@ if [[ "${FAST}" =~ ^(1|true|TRUE)$ ]]; then
   python3 /app/downscale.py "$DATA_PATH" 2
   log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (downscaled)"
 else
-  log "DOWNSCALE" "Skipped (FAST=${FAST})"
+  log "DOWNSCALE" "Skipped (FAST=${FAST}) at values"
   log "SUMMARY" "Dataset ready at $DATA_PATH with $(ls "$DATA_PATH/images" | wc -l) images (original resolution)"
 fi
