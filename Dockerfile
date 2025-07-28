@@ -76,6 +76,7 @@ RUN mkdir -p /app/checkpoints && \
 WORKDIR /app
 
 COPY fix_relative_img_paths.py .
+COPY augment_dataset.py .
 COPY entrypoint.sh .
 COPY downscale.py /app/downscale.py
 COPY no_background_sam.py /app/no_background_sam.py
