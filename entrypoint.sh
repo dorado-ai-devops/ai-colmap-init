@@ -155,7 +155,7 @@ python3 /app/fix_relative_img_paths.py "$TRANSFORMS_PATH" "$DATA_PATH/images"
 ############################################################
 if [[ "${FAST}" =~ ^(1|true|TRUE)$ ]]; then
   log "DOWNSCALE" "Downscaling images by factor 2"
-  python3 /app/downscale.py "$DATA_PATH" 2
+  #python3 /app/downscale.py "$DATA_PATH" 
   log "SUMMARY" "Dataset listo en $DATA_PATH con $(ls "$DATA_PATH/images" | wc -l) imágenes (downscaled)"
 else
   log "DOWNSCALE" "Skipped (FAST=${FAST})"
